@@ -1,4 +1,6 @@
 PODS:
+  - Firebase/Analytics (10.25.0):
+    - Firebase/Core
   - Firebase/Auth (10.25.0):
     - Firebase/CoreOnly
     - FirebaseAuth (~> 10.25.0)
@@ -127,6 +129,7 @@ PODS:
   - RecaptchaInterop (100.0.0)
 
 DEPENDENCIES:
+  - Firebase/Analytics
   - Firebase/Auth
   - Firebase/Core
   - Firebase/Database
@@ -190,6 +193,6 @@ SPEC CHECKSUMS:
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   RecaptchaInterop: 7d1a4a01a6b2cb1610a47ef3f85f0c411434cb21
 
-PODFILE CHECKSUM: 1289d701ba228b4d6041cdaaa4b625fa328349a9
+PODFILE CHECKSUM: c15881b583454daeb7b58ed7332b93ddd273fe1e
 
 COCOAPODS: 1.15.2

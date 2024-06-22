@@ -1,3 +1,4 @@
+import 'package:aiconnectcar/features/home/widgets/voice_animation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -16,6 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final FlutterTts _flutterTts = FlutterTts();
   User? _user;
   String? _vehicleNumber;
+  bool _isSpeaking = false; // 음성 재생 상태를 나타내는 변수
 
   @override
   void initState() {
@@ -31,12 +33,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _initializeTts() {
     _flutterTts.setStartHandler(() {
+      setState(() {
+        _isSpeaking = true; // 음성 재생 시작 시 상태를 true로 설정
+      });
       print("TTS playing");
     });
     _flutterTts.setCompletionHandler(() {
+      setState(() {
+        _isSpeaking = false; // 음성 재생 완료 시 상태를 false로 설정
+      });
       print("TTS complete");
     });
     _flutterTts.setErrorHandler((msg) {
+      setState(() {
+        _isSpeaking = false; // 음성 재생 오류 시 상태를 false로 설정
+      });
       print("TTS error: $msg");
     });
   }
@@ -111,7 +122,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: Center(
-        child: Text('Welcome to AIConnectCar!'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            VoiceAnimation(isSpeaking: _isSpeaking), // 애니메이션 위젯 추가
+            SizedBox(height: 20),
+            Text('Welcome to AIConnectCar!'),
+          ],
+        ),
       ),
     );
   }
