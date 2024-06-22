@@ -1,8 +1,9 @@
-import 'package:aiconnectcar/features/home/widgets/voice_animation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'widgets/voice_animation.dart'; // 애니메이션 위젯을 import 합니다.
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -31,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _initializeTts() {
+  void _initializeTts() async {
     _flutterTts.setStartHandler(() {
       setState(() {
         _isSpeaking = true; // 음성 재생 시작 시 상태를 true로 설정
@@ -50,6 +51,11 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       print("TTS error: $msg");
     });
+
+    // 기본 TTS 설정
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.setPitch(1.0);
   }
 
   void _getVehicleNumberAndListenForTextUpdates() async {
@@ -65,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
       Map<dynamic, dynamic> generalData = generalEvent.snapshot.value as Map<dynamic, dynamic>;
       _vehicleNumber = generalData.keys.first;
       _listenForTextUpdates('general', _vehicleNumber!);
+      _listenForCallUpdates('general', _vehicleNumber!); // Call updates listener 추가
     } else if (isEmergencyUser) {
       print("User type: emergency");
       Map<dynamic, dynamic> emergencyData = emergencyEvent.snapshot.value as Map<dynamic, dynamic>;
@@ -93,6 +100,36 @@ class _HomeScreenState extends State<HomeScreen> {
         print("No data in snapshot");
       }
     });
+  }
+
+  void _listenForCallUpdates(String userType, String vehicleNumber) {
+    print("Listening for call updates...");
+
+    _database.child(userType).child(vehicleNumber).child('report').onValue.listen((event) {
+      DataSnapshot dataSnapshot = event.snapshot;
+      if (dataSnapshot.value != null) {
+        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
+        if (values['112'] == 1) {
+          _makePhoneCall('112');
+        }
+        if (values['119'] == 1) {
+          _makePhoneCall('119');
+        }
+        if (values['0800482000'] == 1) {
+          _makePhoneCall('0800482000');
+        }
+      } else {
+        print("No data in snapshot");
+      }
+    });
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phoneNumber,
+    );
+    await launchUrl(launchUri);
   }
 
   void _readTextIfNotEmpty(String? text, String fieldName) {
