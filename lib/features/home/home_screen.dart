@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../settings/settings_screen.dart';
 import 'widgets/call_manager.dart';
 import 'widgets/database_manager.dart';
 import 'widgets/navigation_manager.dart';
@@ -20,7 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final NavigationManager _navigationManager = NavigationManager();
   User? _user;
   String? _vehicleNumber;
-  bool isVoiceGuideEnabled = true;
+  bool _isVoiceGuideEnabled = true;
 
   @override
   void initState() {
@@ -42,6 +44,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _ttsManager.isSpeaking = false;
       });
     });
+
+    _loadSettings();
   }
 
   void _getVehicleNumberAndListenForUpdates() async {
@@ -64,11 +68,9 @@ class _HomeScreenState extends State<HomeScreen> {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
         Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
-        if (isVoiceGuideEnabled) {
-          _ttsManager.speak(values['myText'] ?? '');
-          _ttsManager.speak(values['rxText'] ?? '');
-          _ttsManager.speak(values['txText'] ?? '');
-        }
+        _ttsManager.speak(values['myText'] ?? '');
+        _ttsManager.speak(values['rxText'] ?? '');
+        _ttsManager.speak(values['txText'] ?? '');
       } else {
         print("No data in snapshot");
       }
@@ -146,16 +148,17 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _loadSettings() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isVoiceGuideEnabled = prefs.getBool('isVoiceGuideEnabled') ?? true;
+    });
+    _ttsManager.enableVoiceGuide(_isVoiceGuideEnabled);
+  }
+
   void _logout(BuildContext context) async {
     await _auth.signOut();
     Navigator.pushReplacementNamed(context, '/login');
-  }
-
-  void _toggleVoiceGuide(bool value) {
-    setState(() {
-      isVoiceGuideEnabled = value;
-      _ttsManager.enableVoiceGuide(value);
-    });
   }
 
   @override
@@ -170,7 +173,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: Icon(Icons.settings),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SettingsScreen(ttsManager: _ttsManager),
+              ),
+            ),
           ),
         ],
       ),
@@ -183,12 +191,6 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               'Welcome to AIConnectCar!',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 20),
-            SwitchListTile(
-              title: Text("Voice Guide"),
-              value: isVoiceGuideEnabled,
-              onChanged: _toggleVoiceGuide,
             ),
           ],
         ),

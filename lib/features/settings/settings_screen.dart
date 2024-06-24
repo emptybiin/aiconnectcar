@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:aiconnectcar/features/home/widgets/tts_manager.dart';
 
 class SettingsScreen extends StatefulWidget {
+  final TtsManager ttsManager;
+
+  SettingsScreen({required this.ttsManager});
+
   @override
   _SettingsScreenState createState() => _SettingsScreenState();
 }
@@ -14,10 +21,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _vehicleController = TextEditingController();
   final TextEditingController _profileController = TextEditingController();
 
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final DatabaseReference _database = FirebaseDatabase(
+    databaseURL: 'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/',
+  ).reference();
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadVehicleInfo();
   }
 
   void _loadSettings() async {
@@ -26,9 +39,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _voiceGuide = prefs.getBool('voiceGuide') ?? true;
       _warningSound = prefs.getBool('warningSound') ?? true;
       _brightness = prefs.getDouble('brightness') ?? 0.5;
-      _vehicleController.text = prefs.getString('vehicleInfo') ?? '';
       _profileController.text = prefs.getString('profileInfo') ?? '';
     });
+  }
+
+  void _loadVehicleInfo() async {
+    User? user = _auth.currentUser;
+    if (user != null) {
+      DatabaseEvent generalEvent = await _database.child('general').orderByChild('email').equalTo(user.email).once();
+      if (generalEvent.snapshot.value != null) {
+        Map<dynamic, dynamic> generalData = generalEvent.snapshot.value as Map<dynamic, dynamic>;
+        String vehicleNumber = generalData.keys.first;
+        setState(() {
+          _vehicleController.text = vehicleNumber;
+        });
+      }
+    }
   }
 
   void _saveSettings() async {
@@ -38,6 +64,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     prefs.setDouble('brightness', _brightness);
     prefs.setString('vehicleInfo', _vehicleController.text);
     prefs.setString('profileInfo', _profileController.text);
+
+    // Update TtsManager state
+    widget.ttsManager.enableVoiceGuide(_voiceGuide);
   }
 
   @override
@@ -87,10 +116,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               title: TextField(
                 controller: _vehicleController,
-                decoration: InputDecoration(labelText: 'Vehicle Info'),
-                onChanged: (String value) {
-                  _saveSettings();
-                },
+                style: TextStyle(color: Colors.white),
+                decoration: InputDecoration(labelText: 'Vehicle Info', labelStyle: TextStyle(color: Colors.grey)),
+                enabled: false, // Making the vehicle info field non-editable
               ),
             ),
             ListTile(

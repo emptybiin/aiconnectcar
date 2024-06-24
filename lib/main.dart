@@ -7,6 +7,7 @@ import 'features/home/home_screen.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'firebase_options.dart';
+import 'features/home/widgets/tts_manager.dart'; // Import TtsManager
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,10 +16,16 @@ void main() async {
   );
   KakaoSdk.init(nativeAppKey: '485169cb19d2eda65a5d36105f83a53b');
 
-  runApp(MyApp());
+  final TtsManager ttsManager = TtsManager();
+
+  runApp(MyApp(ttsManager: ttsManager));
 }
 
 class MyApp extends StatelessWidget {
+  final TtsManager ttsManager;
+
+  MyApp({required this.ttsManager});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -38,7 +45,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         '/sign_up': (context) => SignUpScreen(),
         '/home': (context) => HomeScreen(),
-        '/settings': (context) => SettingsScreen(),
+        '/settings': (context) => SettingsScreen(ttsManager: ttsManager), // Pass TtsManager instance
       },
     );
   }
