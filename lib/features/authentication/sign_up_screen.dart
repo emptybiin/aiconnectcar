@@ -28,7 +28,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (user != null) {
         String carType = _selectedCarType[0] ? 'general' : 'emergency';
-        String vehicleNumber = _carNumberController.text;
+        String vehicleNumber = _carNumberController.text.replaceAll(RegExp(r'[^0-9]'), ''); // 숫자만 추출
 
         if (carType == 'general') {
           await _database.child(carType).child(vehicleNumber).set({
@@ -55,6 +55,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 },
               },
               'chargeStation': {
+                'name': '',
+                'location': {
+                  'lat': 0,
+                  'long': 0,
+                },
+              },
+              'restArea': {
                 'name': '',
                 'location': {
                   'lat': 0,

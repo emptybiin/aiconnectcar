@@ -7,7 +7,6 @@ import 'widgets/navigation_manager.dart';
 import 'widgets/tts_manager.dart';
 import 'widgets/voice_animation.dart';
 
-
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -21,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final NavigationManager _navigationManager = NavigationManager();
   User? _user;
   String? _vehicleNumber;
+  bool isVoiceGuideEnabled = true;
 
   @override
   void initState() {
@@ -64,9 +64,11 @@ class _HomeScreenState extends State<HomeScreen> {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
         Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
-        _ttsManager.speak(values['myText'] ?? '');
-        _ttsManager.speak(values['rxText'] ?? '');
-        _ttsManager.speak(values['txText'] ?? '');
+        if (isVoiceGuideEnabled) {
+          _ttsManager.speak(values['myText'] ?? '');
+          _ttsManager.speak(values['rxText'] ?? '');
+          _ttsManager.speak(values['txText'] ?? '');
+        }
       } else {
         print("No data in snapshot");
       }
@@ -149,6 +151,13 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.pushReplacementNamed(context, '/login');
   }
 
+  void _toggleVoiceGuide(bool value) {
+    setState(() {
+      isVoiceGuideEnabled = value;
+      _ttsManager.enableVoiceGuide(value);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -174,6 +183,12 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               'Welcome to AIConnectCar!',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 20),
+            SwitchListTile(
+              title: Text("Voice Guide"),
+              value: isVoiceGuideEnabled,
+              onChanged: _toggleVoiceGuide,
             ),
           ],
         ),
