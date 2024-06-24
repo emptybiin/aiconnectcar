@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter_tts/flutter_tts.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'widgets/voice_animation.dart'; // 애니메이션 위젯을 import 합니다.
+import 'widgets/call_manager.dart';
+import 'widgets/database_manager.dart';
+import 'widgets/navigation_manager.dart';
+import 'widgets/tts_manager.dart';
+import 'widgets/voice_animation.dart';
+
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -12,71 +15,43 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final DatabaseReference _database = FirebaseDatabase(
-    databaseURL: 'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/',
-  ).reference();
-  final FlutterTts _flutterTts = FlutterTts();
+  final DatabaseManager _databaseManager = DatabaseManager('https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/');
+  final TtsManager _ttsManager = TtsManager();
+  final CallManager _callManager = CallManager();
+  final NavigationManager _navigationManager = NavigationManager();
   User? _user;
   String? _vehicleNumber;
-  bool _isSpeaking = false; // 음성 재생 상태를 나타내는 변수
 
   @override
   void initState() {
     super.initState();
     _user = _auth.currentUser;
     if (_user != null) {
-      _initializeTts();
-      _getVehicleNumberAndListenForTextUpdates();
+      _getVehicleNumberAndListenForUpdates();
     } else {
       print("User is not logged in");
     }
+    _ttsManager.setStartHandler(() {
+      setState(() {
+        _ttsManager.isSpeaking = true;
+      });
+    });
+
+    _ttsManager.setCompletionHandler(() {
+      setState(() {
+        _ttsManager.isSpeaking = false;
+      });
+    });
   }
 
-  void _initializeTts() async {
-    _flutterTts.setStartHandler(() {
-      setState(() {
-        _isSpeaking = true; // 음성 재생 시작 시 상태를 true로 설정
-      });
-      print("TTS playing");
-    });
-    _flutterTts.setCompletionHandler(() {
-      setState(() {
-        _isSpeaking = false; // 음성 재생 완료 시 상태를 false로 설정
-      });
-      print("TTS complete");
-    });
-    _flutterTts.setErrorHandler((msg) {
-      setState(() {
-        _isSpeaking = false; // 음성 재생 오류 시 상태를 false로 설정
-      });
-      print("TTS error: $msg");
-    });
-
-    // 기본 TTS 설정
-    await _flutterTts.setVolume(1.0);
-    await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.setPitch(1.0);
-  }
-
-  void _getVehicleNumberAndListenForTextUpdates() async {
+  void _getVehicleNumberAndListenForUpdates() async {
     print("Getting vehicle number...");
-    DatabaseEvent generalEvent = await _database.child('general').orderByChild('email').equalTo(_user!.email).once();
-    DatabaseEvent emergencyEvent = await _database.child('emergency').orderByChild('email').equalTo(_user!.email).once();
-
-    bool isGeneralUser = generalEvent.snapshot.value != null;
-    bool isEmergencyUser = emergencyEvent.snapshot.value != null;
-
-    if (isGeneralUser) {
-      print("User type: general");
-      Map<dynamic, dynamic> generalData = generalEvent.snapshot.value as Map<dynamic, dynamic>;
-      _vehicleNumber = generalData.keys.first;
+    _vehicleNumber = await _databaseManager.getVehicleNumber();
+    if (_vehicleNumber != null) {
+      print("Listening for updates...");
       _listenForTextUpdates('general', _vehicleNumber!);
-      _listenForCallUpdates('general', _vehicleNumber!); // Call updates listener 추가
-    } else if (isEmergencyUser) {
-      print("User type: emergency");
-      Map<dynamic, dynamic> emergencyData = emergencyEvent.snapshot.value as Map<dynamic, dynamic>;
-      _vehicleNumber = emergencyData.keys.first;
-      _listenForTextUpdates('emergency', _vehicleNumber!);
+      _listenForCallUpdates('general', _vehicleNumber!);
+      _listenForNavigationUpdates('general', _vehicleNumber!);
     } else {
       print("User type: not found in database");
     }
@@ -85,17 +60,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenForTextUpdates(String userType, String vehicleNumber) {
     print("Listening for text updates...");
 
-    _database.child(userType).child(vehicleNumber).child('problem').onValue.listen((event) {
+    _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('problem').onValue.listen((event) {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
         Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
-        if (userType == 'general') {
-          _readTextIfNotEmpty(values['myText'], 'myText');
-          _readTextIfNotEmpty(values['rxText'], 'rxText');
-          _readTextIfNotEmpty(values['txText'], 'txText');
-        } else {
-          _readTextIfNotEmpty(values['egText'], 'egText');
-        }
+        _ttsManager.speak(values['myText'] ?? '');
+        _ttsManager.speak(values['rxText'] ?? '');
+        _ttsManager.speak(values['txText'] ?? '');
       } else {
         print("No data in snapshot");
       }
@@ -105,18 +76,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenForCallUpdates(String userType, String vehicleNumber) {
     print("Listening for call updates...");
 
-    _database.child(userType).child(vehicleNumber).child('report').onValue.listen((event) {
+    _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('report').onValue.listen((event) {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
         Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
         if (values['112'] == 1) {
-          _makePhoneCall('112');
+          _callManager.makePhoneCall('112');
         }
         if (values['119'] == 1) {
-          _makePhoneCall('119');
+          _callManager.makePhoneCall('119');
         }
         if (values['0800482000'] == 1) {
-          _makePhoneCall('0800482000');
+          _callManager.makePhoneCall('0800482000');
         }
       } else {
         print("No data in snapshot");
@@ -124,21 +95,53 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _makePhoneCall(String phoneNumber) async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phoneNumber,
-    );
-    await launchUrl(launchUri);
-  }
+  void _listenForNavigationUpdates(String userType, String vehicleNumber) {
+    print("Listening for navigation updates...");
 
-  void _readTextIfNotEmpty(String? text, String fieldName) {
-    if (text != null && text.isNotEmpty) {
-      print("$fieldName text: $text");
-      _flutterTts.speak(text);
-    } else {
-      print("$fieldName is empty or null");
-    }
+    _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('Service').onValue.listen((event) async {
+      DataSnapshot dataSnapshot = event.snapshot;
+      if (dataSnapshot.value != null) {
+        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
+        if (values['chargeStation'] != null) {
+          var chargeStation = values['chargeStation'];
+          if (chargeStation['location']['lat'] != null && chargeStation['location']['long'] != null) {
+            double lat = chargeStation['location']['lat'].toDouble();
+            double long = chargeStation['location']['long'].toDouble();
+            String name = chargeStation['name'];
+            if (lat != 0.0 && long != 0.0) {
+              print('Navigating to charge station: $name, lat: $lat, long: $long');
+              try {
+                await _navigationManager.navigateToDestination(name, lat, long);
+              } catch (e) {
+                print('Error launching navigation: $e');
+              }
+            } else {
+              print('Invalid charge station coordinates.');
+            }
+          }
+        }
+        if (values['gasStation'] != null) {
+          var gasStation = values['gasStation'];
+          if (gasStation['location']['lat'] != null && gasStation['location']['long'] != null) {
+            double lat = gasStation['location']['lat'].toDouble();
+            double long = gasStation['location']['long'].toDouble();
+            String name = gasStation['name'];
+            if (lat != 0.0 && long != 0.0) {
+              print('Navigating to gas station: $name, lat: $lat, long: $long');
+              try {
+                await _navigationManager.navigateToDestination(name, lat, long);
+              } catch (e) {
+                print('Error launching navigation: $e');
+              }
+            } else {
+              print('Invalid gas station coordinates.');
+            }
+          }
+        }
+      } else {
+        print("No data in snapshot");
+      }
+    });
   }
 
   void _logout(BuildContext context) async {
@@ -156,15 +159,22 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.logout),
             onPressed: () => _logout(context),
           ),
+          IconButton(
+            icon: Icon(Icons.settings),
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
+          ),
         ],
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            VoiceAnimation(isSpeaking: _isSpeaking), // 애니메이션 위젯 추가
+            VoiceAnimation(isSpeaking: _ttsManager.isSpeaking),
             SizedBox(height: 20),
-            Text('Welcome to AIConnectCar!'),
+            Text(
+              'Welcome to AIConnectCar!',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),

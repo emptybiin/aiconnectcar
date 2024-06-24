@@ -40,6 +40,11 @@ dependencies:
   firebase_database: ^10.0.0
   flutter_tts: ^3.4.0
   url_launcher: ^6.0.3
+  kakao_flutter_sdk_common: ^1.2.0
+  kakao_flutter_sdk_navi: ^1.2.0
+
+
+
 
 dev_dependencies:
   flutter_test:
