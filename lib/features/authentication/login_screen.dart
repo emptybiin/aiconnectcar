@@ -40,11 +40,11 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             TextField(
               controller: _emailController,
-              decoration: InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(labelText: '이메일'),
             ),
             TextField(
               controller: _passwordController,
-              decoration: InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: '비밀번호'),
               obscureText: true,
             ),
             SizedBox(height: 20),
@@ -56,13 +56,13 @@ class _LoginScreenState extends State<LoginScreen> {
             SizedBox(height: 20),
             ElevatedButton(
               onPressed: _login,
-              child: Text('Login'),
+              child: Text('로그인'),
             ),
             TextButton(
               onPressed: () {
                 Navigator.pushNamed(context, '/sign_up');
               },
-              child: Text('Sign Up'),
+              child: Text('회원가입'),
             ),
           ],
         ),

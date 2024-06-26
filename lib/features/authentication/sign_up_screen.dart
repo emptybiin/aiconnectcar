@@ -112,11 +112,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Congratulations!'),
-          content: Text('You have successfully signed up!'),
+          title: Text('축하합니다!'),
+          content: Text('회원가입 되었습니다!'),
           actions: [
             TextButton(
-              child: Text('OK'),
+              child: Text('확인'),
               onPressed: () {
                 Navigator.of(context).pop(); // Close the dialog
                 Navigator.pushReplacementNamed(context, '/home'); // Navigate to home screen
@@ -131,7 +131,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Sign Up')),
+      appBar: AppBar(title: Text('회원가입')),
       body: Padding(
         padding: EdgeInsets.all(16.0),
         child: Column(
@@ -139,19 +139,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
           children: [
             TextField(
               controller: _emailController,
-              decoration: InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(labelText: '이메일'),
             ),
             TextField(
               controller: _passwordController,
-              decoration: InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: '비밀번호'),
               obscureText: true,
             ),
             TextField(
               controller: _carNumberController,
-              decoration: InputDecoration(labelText: 'Car Number'),
+              decoration: InputDecoration(labelText: '차량 번호'),
             ),
             SizedBox(height: 20),
-            Text('Select Car Type:'),
+            Text('차량 타입'),
             ToggleButtons(
               isSelected: _selectedCarType,
               onPressed: (int index) {
@@ -164,11 +164,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
               children: <Widget>[
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text('Regular'),
+                  child: Text('일반차량'),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text('Emergency'),
+                  child: Text('응급차량'),
                 ),
               ],
             ),

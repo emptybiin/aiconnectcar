@@ -8,6 +8,7 @@ import 'widgets/database_manager.dart';
 import 'widgets/navigation_manager.dart';
 import 'widgets/tts_manager.dart';
 import 'widgets/voice_animation.dart';
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -23,6 +24,33 @@ class _HomeScreenState extends State<HomeScreen> {
   User? _user;
   String? _vehicleNumber;
   bool _isVoiceGuideEnabled = true;
+  String? _displayedImage;
+  String _ttsText = '';
+
+  final double imageWidth = 200.0;
+  final double imageHeight = 200.0;
+
+  final Map<String, String> _stateToImage = {
+    'alcohol': 'assets/images/alcohol.png',
+    'drowsy': 'assets/images/drowsy.png',
+    'overload': 'assets/images/overload.png',
+    'threat': 'assets/images/threat.png',
+    'breakdown': 'assets/images/breakdown.png',
+    'lightOff': 'assets/images/lightOff.png',
+    'fire': 'assets/images/fire.png',
+    'fuelLeak': 'assets/images/fuelLeak.png',
+    'noFuel': 'assets/images/noFuel.png',
+    'noBattery': 'assets/images/noBattery.png',
+    'moveOver': 'assets/images/moveOver.png',
+    'intersection': 'assets/images/intersection.png',
+    'SUA': 'assets/images/SUA.png',
+    'blackIce': 'assets/images/blackIce.png',
+    'potHole': 'assets/images/potHole.png',
+    'roadDefects': 'assets/images/roadDefects.png',
+    'lowBattery': 'assets/images/lowBattery.png',
+    'fuelShortage': 'assets/images/fuelShortage.png'
+  };
+
 
   @override
   void initState() {
@@ -53,7 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _vehicleNumber = await _databaseManager.getVehicleNumber();
     if (_vehicleNumber != null) {
       print("Listening for updates...");
-      _listenForTextUpdates('general', _vehicleNumber!);
+      _listenForStateUpdates('general', _vehicleNumber!);
       _listenForCallUpdates('general', _vehicleNumber!);
       _listenForNavigationUpdates('general', _vehicleNumber!);
     } else {
@@ -61,20 +89,45 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _listenForTextUpdates(String userType, String vehicleNumber) {
-    print("Listening for text updates...");
+  void _listenForStateUpdates(String userType, String vehicleNumber) {
+    print("Listening for state updates...");
 
     _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('problem').onValue.listen((event) {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
         Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
-        _ttsManager.speak(values['myText'] ?? '');
-        _ttsManager.speak(values['rxText'] ?? '');
-        _ttsManager.speak(values['txText'] ?? '');
+        _updateTtsText(values['myText'] ?? '');
+        _updateTtsText(values['rxText'] ?? '');
+        _updateTtsText(values['txText'] ?? '');
+        _displayStateImage(values['rxState']);
+        _displayStateImage(values['txState']);
+        _displayStateImage(values['myState']);
       } else {
         print("No data in snapshot");
       }
     });
+  }
+
+  void _updateTtsText(String text) {
+    if (text.isNotEmpty) {
+      setState(() {
+        _ttsText = text;
+      });
+      _ttsManager.speak(text);
+    }
+  }
+
+  void _displayStateImage(String? state) {
+    if (state != null && _stateToImage.containsKey(state)) {
+      setState(() {
+        _displayedImage = _stateToImage[state];
+      });
+      Timer(Duration(seconds: 5), () {
+        setState(() {
+          _displayedImage = null;
+        });
+      });
+    }
   }
 
   void _listenForCallUpdates(String userType, String vehicleNumber) {
@@ -109,8 +162,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (values['chargeStation'] != null) {
           var chargeStation = values['chargeStation'];
           if (chargeStation['location']['lat'] != null && chargeStation['location']['long'] != null) {
-            double lat = chargeStation['location']['lat'].toDouble();
-            double long = chargeStation['location']['long'].toDouble();
+            double lat = _convertToDouble(chargeStation['location']['lat']);
+            double long = _convertToDouble(chargeStation['location']['long']);
             String name = chargeStation['name'];
             if (lat != 0.0 && long != 0.0) {
               print('Navigating to charge station: $name, lat: $lat, long: $long');
@@ -127,8 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (values['gasStation'] != null) {
           var gasStation = values['gasStation'];
           if (gasStation['location']['lat'] != null && gasStation['location']['long'] != null) {
-            double lat = gasStation['location']['lat'].toDouble();
-            double long = gasStation['location']['long'].toDouble();
+            double lat = _convertToDouble(gasStation['location']['lat']);
+            double long = _convertToDouble(gasStation['location']['long']);
             String name = gasStation['name'];
             if (lat != 0.0 && long != 0.0) {
               print('Navigating to gas station: $name, lat: $lat, long: $long');
@@ -148,6 +201,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  double _convertToDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
   void _loadSettings() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -165,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Home'),
+        title: Text('AIConnectCar'),
         actions: [
           IconButton(
             icon: Icon(Icons.logout),
@@ -186,11 +246,21 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            if (_displayedImage != null)
+              Image.asset(
+                _displayedImage!,
+                width: imageWidth,
+                height: imageHeight,
+              ),
+            SizedBox(height: 40,),
             VoiceAnimation(isSpeaking: _ttsManager.isSpeaking),
             SizedBox(height: 20),
-            Text(
-              'Welcome to AIConnectCar!',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            Padding(
+              padding: const EdgeInsets.all(30.0),
+              child: Text(
+                _ttsText.isNotEmpty ? _ttsText : '듣고 있습니다',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
