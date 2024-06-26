@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>We need your location to show your position on the map.</string>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>We need your location to show your position on the map.</string>
+    <string>We need your location to show your current position on the map.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>We need your location to provide continuous navigation services.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>We need access to motion data to provide compass functionality.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleURLTypes</key>
