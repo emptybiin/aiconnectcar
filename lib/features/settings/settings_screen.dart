@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:aiconnectcar/features/home/widgets/tts_manager.dart';
+import '../home/widgets/tts_manager.dart';
 
 class SettingsScreen extends StatefulWidget {
   final TtsManager ttsManager;
@@ -17,10 +17,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _voiceGuide = true;
   bool _warningSound = true;
   double _brightness = 0.5;
-
   final TextEditingController _vehicleController = TextEditingController();
   final TextEditingController _profileController = TextEditingController();
-
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseReference _database = FirebaseDatabase(
     databaseURL: 'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/',
@@ -64,17 +62,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     prefs.setDouble('brightness', _brightness);
     prefs.setString('vehicleInfo', _vehicleController.text);
     prefs.setString('profileInfo', _profileController.text);
-
-    // Update TtsManager state
     widget.ttsManager.enableVoiceGuide(_voiceGuide);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Settings'),
-      ),
+      appBar: AppBar(title: Text('Settings')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(
@@ -118,7 +112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 controller: _vehicleController,
                 style: TextStyle(color: Colors.white),
                 decoration: InputDecoration(labelText: 'Vehicle Info', labelStyle: TextStyle(color: Colors.grey)),
-                enabled: false, // Making the vehicle info field non-editable
+                enabled: false,
               ),
             ),
             ListTile(

@@ -20,7 +20,7 @@
       </dict>
     </array>
 	<key>CFBundleDisplayName</key>
-	<string>Aiconnectcar</string>
+	<string>AIConnectCar</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

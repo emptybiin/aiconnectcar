@@ -19,9 +19,20 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: Text(
-          'AIConnectCar',
-          style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/aiconnectcar_logo.png',
+              width: 150,
+              height: 150,
+            ),
+            SizedBox(height: 20),
+            Text(
+              'AIConnectCar',
+              style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
       ),
     );

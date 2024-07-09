@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter_compass/flutter_compass.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/call_manager.dart';
 import 'widgets/database_manager.dart';
+import 'widgets/location_service.dart';
 import 'widgets/navigation_manager.dart';
 import 'widgets/tts_manager.dart';
 import 'widgets/voice_animation.dart';
+import 'widgets/state_to_image.dart';
 import 'dart:async';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -17,73 +23,113 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final DatabaseManager _databaseManager = DatabaseManager('https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/');
+  final DatabaseManager _databaseManager = DatabaseManager(
+      'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/');
   final TtsManager _ttsManager = TtsManager();
   final CallManager _callManager = CallManager();
   final NavigationManager _navigationManager = NavigationManager();
+  final LocationService _locationService = LocationService();
+
   User? _user;
   String? _vehicleNumber;
   bool _isVoiceGuideEnabled = true;
   String? _displayedImage;
   String _ttsText = '';
-
-  final double imageWidth = 200.0;
-  final double imageHeight = 200.0;
-
-  final Map<String, String> _stateToImage = {
-    'alcohol': 'assets/images/alcohol.png',
-    'drowsy': 'assets/images/drowsy.png',
-    'overload': 'assets/images/overload.png',
-    'threat': 'assets/images/threat.png',
-    'breakdown': 'assets/images/breakdown.png',
-    'lightOff': 'assets/images/lightOff.png',
-    'fire': 'assets/images/fire.png',
-    'fuelLeak': 'assets/images/fuelLeak.png',
-    'noFuel': 'assets/images/noFuel.png',
-    'noBattery': 'assets/images/noBattery.png',
-    'moveOver': 'assets/images/moveOver.png',
-    'intersection': 'assets/images/intersection.png',
-    'SUA': 'assets/images/SUA.png',
-    'blackIce': 'assets/images/blackIce.png',
-    'potHole': 'assets/images/potHole.png',
-    'roadDefects': 'assets/images/roadDefects.png',
-    'lowBattery': 'assets/images/lowBattery.png',
-    'fuelShortage': 'assets/images/fuelShortage.png'
-  };
-
+  Timer? _locationTimer;
+  LatLng? _currentPosition;
+  GoogleMapController? _mapController;
+  String? _userType;
+  double _currentBearing = 0.0; // 현재 베어링
+  StreamSubscription? _compassSubscription;
 
   @override
   void initState() {
     super.initState();
+    _initialize();
+    _requestPermissions();
+    _listenToCompass();
+  }
+
+  Future<void> _initialize() async {
+    await _requestPermissions();
     _user = _auth.currentUser;
     if (_user != null) {
-      _getVehicleNumberAndListenForUpdates();
+      await _getVehicleNumberAndListenForUpdates();
+      _startLocationUpdates();
+      _listenToCompass();
+      _ttsManager.setStartHandler(_onTtsStart);
+      _ttsManager.setCompletionHandler(_onTtsComplete);
+      await _loadSettings();
     } else {
       print("User is not logged in");
     }
-    _ttsManager.setStartHandler(() {
-      setState(() {
-        _ttsManager.isSpeaking = true;
-      });
-    });
-
-    _ttsManager.setCompletionHandler(() {
-      setState(() {
-        _ttsManager.isSpeaking = false;
-      });
-    });
-
-    _loadSettings();
   }
 
-  void _getVehicleNumberAndListenForUpdates() async {
+  Future<void> _requestPermissions() async {
+    if (await Permission.locationWhenInUse.request().isGranted) {
+      // 권한이 승인된 경우 추가 요청 실행
+      await Permission.activityRecognition.request();
+    }
+  }
+
+  void _startLocationUpdates() {
+    _locationTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
+      if (_userType != null && _vehicleNumber != null) {
+        await _locationService.updateLocation(_userType!, _vehicleNumber!);
+        Position position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high);
+        if (mounted) {
+          setState(() {
+            _currentPosition = LatLng(position.latitude, position.longitude);
+          });
+          _moveCameraToCurrentPosition();
+        }
+      }
+    });
+  }
+
+  void _listenToCompass() {
+    _compassSubscription = FlutterCompass.events!.listen((event) {
+      if (mounted) {
+        setState(() {
+          _currentBearing = event.heading ?? 0.0;
+        });
+        _moveCameraToCurrentPosition();
+      }
+    });
+  }
+
+  void _moveCameraToCurrentPosition() {
+    if (_currentPosition != null && _mapController != null) {
+      final LatLng targetPosition = _currentPosition!;
+      _mapController?.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: targetPosition, // 현재 위치를 타겟으로 설정
+          zoom: 19.0,
+          tilt: 30.0, // 3D 효과를 위한 기울기 설정
+          bearing: _currentBearing, // 나침반 데이터로 베어링 업데이트
+        ),
+      ));
+    }
+  }
+
+  @override
+  void dispose() {
+    _locationTimer?.cancel();
+    _compassSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _getVehicleNumberAndListenForUpdates() async {
     print("Getting vehicle number...");
     _vehicleNumber = await _databaseManager.getVehicleNumber();
     if (_vehicleNumber != null) {
+      _userType =
+          await _databaseManager.getUserType(_vehicleNumber!); // 사용자 타입 가져오기
       print("Listening for updates...");
-      _listenForStateUpdates('general', _vehicleNumber!);
-      _listenForCallUpdates('general', _vehicleNumber!);
-      _listenForNavigationUpdates('general', _vehicleNumber!);
+      _listenForStateUpdates(_userType!, _vehicleNumber!);
+      _listenForCallUpdates(_userType!, _vehicleNumber!);
+      _listenForNavigationUpdates(_userType!, _vehicleNumber!);
     } else {
       print("User type: not found in database");
     }
@@ -92,40 +138,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenForStateUpdates(String userType, String vehicleNumber) {
     print("Listening for state updates...");
 
-    _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('problem').onValue.listen((event) {
-      DataSnapshot dataSnapshot = event.snapshot;
-      if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
-        _updateTtsText(values['myText'] ?? '');
-        _updateTtsText(values['rxText'] ?? '');
-        _updateTtsText(values['txText'] ?? '');
-        _displayStateImage(values['rxState']);
-        _displayStateImage(values['txState']);
-        _displayStateImage(values['myState']);
-      } else {
-        print("No data in snapshot");
-      }
+    _databaseManager.listenForTextUpdates(
+        vehicleNumber, userType, _isVoiceGuideEnabled, (text) {
+      _updateTtsText(text);
     });
   }
 
-  void _updateTtsText(String text) {
-    if (text.isNotEmpty) {
+  void _updateTtsText(String? text) {
+    if (text != null && text.trim().isNotEmpty) {
       setState(() {
         _ttsText = text;
+        _displayedImage = stateToImage[_ttsText]; // TTS 텍스트와 연관된 이미지를 설정
       });
-      _ttsManager.speak(text);
-    }
-  }
-
-  void _displayStateImage(String? state) {
-    if (state != null && _stateToImage.containsKey(state)) {
+      _ttsManager.speak(text).then((_) {
+        if (mounted) {
+          setState(() {
+            _displayedImage = null; // TTS가 완료되면 이미지를 제거
+          });
+        }
+      });
+    } else {
       setState(() {
-        _displayedImage = _stateToImage[state];
-      });
-      Timer(Duration(seconds: 5), () {
-        setState(() {
-          _displayedImage = null;
-        });
+        _ttsText = '듣고 있습니다'; // ttsText가 없을 경우 기본 텍스트 설정
       });
     }
   }
@@ -133,19 +167,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenForCallUpdates(String userType, String vehicleNumber) {
     print("Listening for call updates...");
 
-    _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('report').onValue.listen((event) {
+    _databaseManager
+        .getDatabaseRef()
+        .child(userType)
+        .child(vehicleNumber)
+        .child('report')
+        .onValue
+        .listen((event) {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
-        if (values['112'] == 1) {
-          _callManager.makePhoneCall('112');
-        }
-        if (values['119'] == 1) {
-          _callManager.makePhoneCall('119');
-        }
-        if (values['0800482000'] == 1) {
-          _callManager.makePhoneCall('0800482000');
-        }
+        Map<dynamic, dynamic> values =
+            dataSnapshot.value as Map<dynamic, dynamic>;
+        if (values['112'] == 1) _callManager.makePhoneCall('112');
+        if (values['119'] == 1) _callManager.makePhoneCall('119');
+        if (values['0800482000'] == 1) _callManager.makePhoneCall('0800482000');
       } else {
         print("No data in snapshot");
       }
@@ -155,50 +190,44 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenForNavigationUpdates(String userType, String vehicleNumber) {
     print("Listening for navigation updates...");
 
-    _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('Service').onValue.listen((event) async {
+    _databaseManager
+        .getDatabaseRef()
+        .child(userType)
+        .child(vehicleNumber)
+        .child('Service')
+        .onValue
+        .listen((event) async {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
-        if (values['chargeStation'] != null) {
-          var chargeStation = values['chargeStation'];
-          if (chargeStation['location']['lat'] != null && chargeStation['location']['long'] != null) {
-            double lat = _convertToDouble(chargeStation['location']['lat']);
-            double long = _convertToDouble(chargeStation['location']['long']);
-            String name = chargeStation['name'];
-            if (lat != 0.0 && long != 0.0) {
-              print('Navigating to charge station: $name, lat: $lat, long: $long');
-              try {
-                await _navigationManager.navigateToDestination(name, lat, long);
-              } catch (e) {
-                print('Error launching navigation: $e');
-              }
-            } else {
-              print('Invalid charge station coordinates.');
-            }
-          }
-        }
-        if (values['gasStation'] != null) {
-          var gasStation = values['gasStation'];
-          if (gasStation['location']['lat'] != null && gasStation['location']['long'] != null) {
-            double lat = _convertToDouble(gasStation['location']['lat']);
-            double long = _convertToDouble(gasStation['location']['long']);
-            String name = gasStation['name'];
-            if (lat != 0.0 && long != 0.0) {
-              print('Navigating to gas station: $name, lat: $lat, long: $long');
-              try {
-                await _navigationManager.navigateToDestination(name, lat, long);
-              } catch (e) {
-                print('Error launching navigation: $e');
-              }
-            } else {
-              print('Invalid gas station coordinates.');
-            }
-          }
-        }
+        Map<dynamic, dynamic> values =
+            dataSnapshot.value as Map<dynamic, dynamic>;
+        await _handleServiceUpdate(values, 'chargeStation');
+        await _handleServiceUpdate(values, 'gasStation');
+        await _handleServiceUpdate(values, 'restArea');
       } else {
         print("No data in snapshot");
       }
     });
+  }
+
+  Future<void> _handleServiceUpdate(
+      Map<dynamic, dynamic> values, String serviceType) async {
+    var service = values[serviceType];
+    if (service != null && service['location'] != null) {
+      double lat = _convertToDouble(service['location']['lat']);
+      double long = _convertToDouble(service['location']['long']);
+      String name = service['name'];
+      if (lat != 0.0 && long != 0.0) {
+        print('Navigating to $serviceType: $name, lat: $lat, long: $long');
+        try {
+          await _navigationManager.navigateToDestination(name, lat, long);
+        } catch (e) {
+          print('Error launching navigation: $e');
+        }
+      } else {
+        print('Invalid $serviceType coordinates.');
+      }
+    }
   }
 
   double _convertToDouble(dynamic value) {
@@ -208,12 +237,33 @@ class _HomeScreenState extends State<HomeScreen> {
     return 0.0;
   }
 
-  void _loadSettings() async {
+  Future<void> _loadSettings() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       _isVoiceGuideEnabled = prefs.getBool('isVoiceGuideEnabled') ?? true;
     });
     _ttsManager.enableVoiceGuide(_isVoiceGuideEnabled);
+  }
+
+  void _displayStateImage(String? state) {
+    if (state != null && stateToImage.containsKey(state)) {
+      setState(() {
+        _displayedImage = stateToImage[state];
+      });
+    }
+  }
+
+  void _onTtsStart() {
+    setState(() {
+      _ttsManager.isSpeaking = true;
+    });
+  }
+
+  void _onTtsComplete() {
+    setState(() {
+      _ttsManager.isSpeaking = false;
+      _displayedImage = null; // TTS가 완료되면 이미지를 제거
+    });
   }
 
   void _logout(BuildContext context) async {
@@ -223,46 +273,112 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('AIConnectCar'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () => _logout(context),
-          ),
-          IconButton(
-            icon: Icon(Icons.settings),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => SettingsScreen(ttsManager: _ttsManager),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_displayedImage != null)
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
               Image.asset(
-                _displayedImage!,
-                width: imageWidth,
-                height: imageHeight,
+                'assets/aiconnectcar_logo.png',
+                width: 30,
+                height: 30,
               ),
-            SizedBox(height: 40,),
-            VoiceAnimation(isSpeaking: _ttsManager.isSpeaking),
-            SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.all(30.0),
-              child: Text(
-                _ttsText.isNotEmpty ? _ttsText : '듣고 있습니다',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              SizedBox(width: 5),
+              Text('AIConnectCar'),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.logout),
+              onPressed: () => _logout(context),
+            ),
+            IconButton(
+              icon: Icon(Icons.settings),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SettingsScreen(ttsManager: _ttsManager),
+                ),
               ),
             ),
           ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: _currentPosition ?? LatLng(0, 0),
+                        zoom: 19.0,
+                        tilt: 30.0, // 3D 효과를 위한 기울기 설정
+                      ),
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      padding: EdgeInsets.only(top: 300),
+                      // 지도 내부 패딩을 추가하여 지도의 콘텐츠를 밑으로 이동
+                      onMapCreated: (GoogleMapController controller) {
+                        _mapController = controller;
+                        if (_currentPosition != null) {
+                          _moveCameraToCurrentPosition();
+                        }
+                      },
+                    ),
+                    if (_displayedImage != null)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.all(15.0),
+                          child: Image.asset(
+                            _displayedImage!,
+                            width: 100,
+                            height: 100,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(15.0),
+                child: Row(
+                  children: [
+                    VoiceAnimation(isSpeaking: _ttsManager.isSpeaking),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                            vertical: 10.0, horizontal: 20.0),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15.0),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black26,
+                              offset: Offset(0, 2),
+                              blurRadius: 6.0,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          _ttsText.isNotEmpty ? _ttsText : '듣고 있습니다',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

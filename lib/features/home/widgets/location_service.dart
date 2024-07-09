@@ -6,9 +6,9 @@ class LocationService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseReference _database = FirebaseDatabase(
     databaseURL: 'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/',
-  ).reference().child('general');
+  ).reference();
 
-  Future<void> updateLocation() async {
+  Future<void> updateLocation(String userType, String vehicleNumber) async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       return Future.error('Location services are disabled.');
@@ -30,7 +30,7 @@ class LocationService {
 
     User? user = _auth.currentUser;
     if (user != null) {
-      _database.child(user.uid).child('location').set({
+      _database.child(userType).child(vehicleNumber).child('location').set({
         'lat': position.latitude,
         'long': position.longitude,
       });

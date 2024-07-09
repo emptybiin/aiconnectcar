@@ -16,7 +16,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     databaseURL: 'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/',
   ).reference();
   String _errorMessage = '';
-  List<bool> _selectedCarType = [true, false]; // Initial selection: Regular
+  List<bool> _selectedCarType = [true, false];
 
   void _signUp() async {
     try {
@@ -27,84 +27,52 @@ class _SignUpScreenState extends State<SignUpScreen> {
       User? user = userCredential.user;
 
       if (user != null) {
-        String carType = _selectedCarType[0] ? 'general' : 'emergency';
-        String vehicleNumber = _carNumberController.text.replaceAll(RegExp(r'[^0-9]'), ''); // 숫자만 추출
-
-        if (carType == 'general') {
-          await _database.child(carType).child(vehicleNumber).set({
-            'email': _emailController.text,
-            'location': {
-              'lat': 0,
-              'long': 0,
-            },
-            'trigger': '',
-            'problem': {
-              'rxState': '',
-              'txState': '',
-              'myState': '',
-              'txText': '',
-              'rxText': '',
-              'myText': '',
-            },
-            'Service': {
-              'gasStation': {
-                'name': '',
-                'location': {
-                  'lat': 0,
-                  'long': 0,
-                },
-              },
-              'chargeStation': {
-                'name': '',
-                'location': {
-                  'lat': 0,
-                  'long': 0,
-                },
-              },
-              'restArea': {
-                'name': '',
-                'location': {
-                  'lat': 0,
-                  'long': 0,
-                },
-              },
-            },
-            'report': {
-              '112': 0,
-              '119': 0,
-              '0800482000': 0,
-            },
-          });
-        } else {
-          await _database.child(carType).child(vehicleNumber).set({
-            'email': _emailController.text,
-            'location': {
-              'lat': 0,
-              'long': 0,
-            },
-            'trigger': '',
-            'problem': {
-              'egState': '',
-              'egText': '',
-            },
-            'intersectionGPS': {
-              'lat': 0,
-              'long': 0,
-            },
-          });
-        }
-
+        await _saveUserData(user);
         _showSuccessDialog(context);
       }
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        _errorMessage = e.message ?? 'An unknown error occurred';
-      });
+      _handleError(e.message);
     } catch (e) {
-      setState(() {
-        _errorMessage = 'An unknown error occurred';
-      });
+      _handleError('An unknown error occurred');
     }
+  }
+
+  Future<void> _saveUserData(User user) async {
+    String carType = _selectedCarType[0] ? 'general' : 'emergency';
+    String vehicleNumber = _carNumberController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    Map<String, dynamic> userData = _buildUserData(carType);
+
+    await _database.child(carType).child(vehicleNumber).set(userData);
+  }
+
+  Map<String, dynamic> _buildUserData(String carType) {
+    if (carType == 'general') {
+      return {
+        'email': _emailController.text,
+        'location': {'lat': 0, 'long': 0},
+        'trigger': '',
+        'problem': {'rxState': '', 'txState': '', 'myState': '', 'nmState': '', 'txText': '', 'rxText': '', 'myText': '', 'nmText': ''},
+        'Service': {
+          'gasStation': {'name': '', 'location': {'lat': 0, 'long': 0}},
+          'chargeStation': {'name': '', 'location': {'lat': 0, 'long': 0}},
+          'restArea': {'name': '', 'location': {'lat': 0, 'long': 0}},
+        },
+        'report': {'112': 0, '119': 0, '0800482000': 0},
+      };
+    } else {
+      return {
+        'email': _emailController.text,
+        'location': {'lat': 0, 'long': 0},
+        'trigger': '',
+        'problem': {'egState': '', 'egText': ''},
+      };
+    }
+  }
+
+  void _handleError(String? message) {
+    setState(() {
+      _errorMessage = message ?? 'An unknown error occurred';
+    });
   }
 
   void _showSuccessDialog(BuildContext context) {
@@ -118,8 +86,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             TextButton(
               child: Text('확인'),
               onPressed: () {
-                Navigator.of(context).pop(); // Close the dialog
-                Navigator.pushReplacementNamed(context, '/home'); // Navigate to home screen
+                Navigator.of(context).pop();
+                Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
               },
             ),
           ],
@@ -132,60 +100,67 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('회원가입')),
-      body: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _emailController,
-              decoration: InputDecoration(labelText: '이메일'),
-            ),
-            TextField(
-              controller: _passwordController,
-              decoration: InputDecoration(labelText: '비밀번호'),
-              obscureText: true,
-            ),
-            TextField(
-              controller: _carNumberController,
-              decoration: InputDecoration(labelText: '차량 번호'),
-            ),
-            SizedBox(height: 20),
-            Text('차량 타입'),
-            ToggleButtons(
-              isSelected: _selectedCarType,
-              onPressed: (int index) {
-                setState(() {
-                  for (int i = 0; i < _selectedCarType.length; i++) {
-                    _selectedCarType[i] = i == index;
-                  }
-                });
-              },
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text('일반차량'),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text('응급차량'),
-                ),
-              ],
-            ),
-            SizedBox(height: 20),
-            if (_errorMessage.isNotEmpty)
-              Text(
-                _errorMessage,
-                style: TextStyle(color: Colors.red),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTextField(_emailController, '이메일'),
+              _buildTextField(_passwordController, '비밀번호', obscureText: true),
+              _buildTextField(_carNumberController, '차량 번호'),
+              SizedBox(height: 20),
+              Text('차량 타입'),
+              _buildToggleButtons(),
+              SizedBox(height: 20),
+              if (_errorMessage.isNotEmpty) _buildErrorText(),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _signUp,
+                child: Text('회원가입'),
               ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _signUp,
-              child: Text('Sign Up'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  TextField _buildTextField(TextEditingController controller, String labelText, {bool obscureText = false}) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(labelText: labelText),
+      obscureText: obscureText,
+    );
+  }
+
+  ToggleButtons _buildToggleButtons() {
+    return ToggleButtons(
+      isSelected: _selectedCarType,
+      onPressed: (int index) {
+        setState(() {
+          for (int i = 0; i < _selectedCarType.length; i++) {
+            _selectedCarType[i] = i == index;
+          }
+        });
+      },
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Text('일반차량'),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Text('응급차량'),
+        ),
+      ],
+    );
+  }
+
+  Text _buildErrorText() {
+    return Text(
+      _errorMessage,
+      style: TextStyle(color: Colors.red),
     );
   }
 }

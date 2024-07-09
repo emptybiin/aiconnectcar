@@ -5,6 +5,15 @@
         android:icon="@mipmap/ic_launcher">
         <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
         <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+        <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+        <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+        <uses-permission android:name="android.hardware.sensor.compass"/>
+
+        <meta-data android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyALSd3dqWMcVdun61oLS5xHUb2FL6kiFjQ"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
