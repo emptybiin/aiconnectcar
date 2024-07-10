@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter_compass/flutter_compass.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_compass/flutter_compass.dart';
+
 import '../settings/settings_screen.dart';
 import 'widgets/call_manager.dart';
 import 'widgets/database_manager.dart';
@@ -12,9 +17,7 @@ import 'widgets/navigation_manager.dart';
 import 'widgets/tts_manager.dart';
 import 'widgets/voice_animation.dart';
 import 'widgets/state_to_image.dart';
-import 'dart:async';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'widgets/speech_recognition_manager.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -23,8 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final DatabaseManager _databaseManager = DatabaseManager(
-      'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/');
+  final DatabaseManager _databaseManager = DatabaseManager('https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/');
   final TtsManager _ttsManager = TtsManager();
   final CallManager _callManager = CallManager();
   final NavigationManager _navigationManager = NavigationManager();
@@ -39,15 +41,14 @@ class _HomeScreenState extends State<HomeScreen> {
   LatLng? _currentPosition;
   GoogleMapController? _mapController;
   String? _userType;
-  double _currentBearing = 0.0; // 현재 베어링
+  double _currentBearing = 0.0;
   StreamSubscription? _compassSubscription;
+  late SpeechRecognitionManager _speechRecognitionManager;
 
   @override
   void initState() {
     super.initState();
     _initialize();
-    _requestPermissions();
-    _listenToCompass();
   }
 
   Future<void> _initialize() async {
@@ -66,9 +67,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _requestPermissions() async {
-    if (await Permission.locationWhenInUse.request().isGranted) {
-      // 권한이 승인된 경우 추가 요청 실행
+    final locationPermissionStatus = await Permission.locationWhenInUse.request();
+    if (locationPermissionStatus.isGranted) {
       await Permission.activityRecognition.request();
+    } else {
+      // 권한이 거부되었을 때 처리
+      print("Location permission not granted");
     }
   }
 
@@ -76,8 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _locationTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
       if (_userType != null && _vehicleNumber != null) {
         await _locationService.updateLocation(_userType!, _vehicleNumber!);
-        Position position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high);
+        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
         if (mounted) {
           setState(() {
             _currentPosition = LatLng(position.latitude, position.longitude);
@@ -104,10 +107,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final LatLng targetPosition = _currentPosition!;
       _mapController?.animateCamera(CameraUpdate.newCameraPosition(
         CameraPosition(
-          target: targetPosition, // 현재 위치를 타겟으로 설정
+          target: targetPosition,
           zoom: 19.0,
-          tilt: 30.0, // 3D 효과를 위한 기울기 설정
-          bearing: _currentBearing, // 나침반 데이터로 베어링 업데이트
+          tilt: 30.0,
+          bearing: _currentBearing,
         ),
       ));
     }
@@ -124,23 +127,72 @@ class _HomeScreenState extends State<HomeScreen> {
     print("Getting vehicle number...");
     _vehicleNumber = await _databaseManager.getVehicleNumber();
     if (_vehicleNumber != null) {
-      _userType =
-          await _databaseManager.getUserType(_vehicleNumber!); // 사용자 타입 가져오기
+      _userType = await _databaseManager.getUserType(_vehicleNumber!);
       print("Listening for updates...");
       _listenForStateUpdates(_userType!, _vehicleNumber!);
       _listenForCallUpdates(_userType!, _vehicleNumber!);
       _listenForNavigationUpdates(_userType!, _vehicleNumber!);
+      await _initializeSpeechRecognition(_userType!, _vehicleNumber!);
     } else {
       print("User type: not found in database");
     }
   }
 
+  Future<void> _initializeSpeechRecognition(String userType, String vehicleNumber) async {
+    DatabaseReference userRequestRef = _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('userRequest');
+    _speechRecognitionManager = SpeechRecognitionManager(userRequestRef);
+    await _speechRecognitionManager.initialize();
+  }
+
   void _listenForStateUpdates(String userType, String vehicleNumber) {
     print("Listening for state updates...");
 
-    _databaseManager.listenForTextUpdates(
-        vehicleNumber, userType, _isVoiceGuideEnabled, (text) {
+    _databaseManager.listenForTextUpdates(vehicleNumber, userType, _isVoiceGuideEnabled, (text) {
       _updateTtsText(text);
+    });
+
+    _databaseManager.getDatabaseRef()
+        .child(userType)
+        .child(vehicleNumber)
+        .child('problem')
+        .onValue
+        .listen((event) {
+      DataSnapshot dataSnapshot = event.snapshot;
+      print("DataSnapshot: ${dataSnapshot.value}");
+      if (dataSnapshot.value != null) {
+        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
+
+        String combinedText = '';
+        if (_isVoiceGuideEnabled) {
+          if (userType == 'general') {
+            if (values['myText'] != null && values['myText'].toString().trim().isNotEmpty) {
+              combinedText += '${values['myText']} ';
+            }
+            if (values['rxText'] != null && values['rxText'].toString().trim().isNotEmpty) {
+              combinedText += '${values['rxText']} ';
+            }
+            if (values['txText'] != null && values['txText'].toString().trim().isNotEmpty) {
+              combinedText += '${values['txText']} ';
+            }
+            if (values['nmText'] != null && values['nmText'].toString().trim().isNotEmpty) {
+              combinedText += '${values['nmText']} ';
+            }
+          } else if (userType == 'emergency') {
+            if (values['egText'] != null && values['egText'].toString().trim().isNotEmpty) {
+              combinedText += '${values['egText']} ';
+            }
+          }
+          if (combinedText.trim().isNotEmpty) {
+            _updateTtsText(combinedText.trim());
+          }
+        }
+
+        _displayStateImage(values['rxState']);
+        _displayStateImage(values['txState']);
+        _displayStateImage(values['myState']);
+      } else {
+        print("No data in snapshot");
+      }
     });
   }
 
@@ -148,18 +200,18 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text != null && text.trim().isNotEmpty) {
       setState(() {
         _ttsText = text;
-        _displayedImage = stateToImage[_ttsText]; // TTS 텍스트와 연관된 이미지를 설정
+        _displayedImage = stateToImage[_ttsText];
       });
       _ttsManager.speak(text).then((_) {
         if (mounted) {
           setState(() {
-            _displayedImage = null; // TTS가 완료되면 이미지를 제거
+            _displayedImage = null;
           });
         }
       });
     } else {
       setState(() {
-        _ttsText = '듣고 있습니다'; // ttsText가 없을 경우 기본 텍스트 설정
+        _ttsText = '듣고 있습니다';
       });
     }
   }
@@ -167,8 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenForCallUpdates(String userType, String vehicleNumber) {
     print("Listening for call updates...");
 
-    _databaseManager
-        .getDatabaseRef()
+    _databaseManager.getDatabaseRef()
         .child(userType)
         .child(vehicleNumber)
         .child('report')
@@ -176,8 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen((event) {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values =
-            dataSnapshot.value as Map<dynamic, dynamic>;
+        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
         if (values['112'] == 1) _callManager.makePhoneCall('112');
         if (values['119'] == 1) _callManager.makePhoneCall('119');
         if (values['0800482000'] == 1) _callManager.makePhoneCall('0800482000');
@@ -190,8 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenForNavigationUpdates(String userType, String vehicleNumber) {
     print("Listening for navigation updates...");
 
-    _databaseManager
-        .getDatabaseRef()
+    _databaseManager.getDatabaseRef()
         .child(userType)
         .child(vehicleNumber)
         .child('Service')
@@ -199,8 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen((event) async {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values =
-            dataSnapshot.value as Map<dynamic, dynamic>;
+        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
         await _handleServiceUpdate(values, 'chargeStation');
         await _handleServiceUpdate(values, 'gasStation');
         await _handleServiceUpdate(values, 'restArea');
@@ -210,8 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _handleServiceUpdate(
-      Map<dynamic, dynamic> values, String serviceType) async {
+  Future<void> _handleServiceUpdate(Map<dynamic, dynamic> values, String serviceType) async {
     var service = values[serviceType];
     if (service != null && service['location'] != null) {
       double lat = _convertToDouble(service['location']['lat']);
@@ -262,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onTtsComplete() {
     setState(() {
       _ttsManager.isSpeaking = false;
-      _displayedImage = null; // TTS가 완료되면 이미지를 제거
+      _displayedImage = null;
     });
   }
 
@@ -314,12 +361,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       initialCameraPosition: CameraPosition(
                         target: _currentPosition ?? LatLng(0, 0),
                         zoom: 19.0,
-                        tilt: 30.0, // 3D 효과를 위한 기울기 설정
+                        tilt: 30.0,
                       ),
                       myLocationEnabled: true,
                       myLocationButtonEnabled: true,
                       padding: EdgeInsets.only(top: 300),
-                      // 지도 내부 패딩을 추가하여 지도의 콘텐츠를 밑으로 이동
                       onMapCreated: (GoogleMapController controller) {
                         _mapController = controller;
                         if (_currentPosition != null) {
@@ -350,8 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(width: 10),
                     Expanded(
                       child: Container(
-                        padding: EdgeInsets.symmetric(
-                            vertical: 10.0, horizontal: 20.0),
+                        padding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 20.0),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(15.0),

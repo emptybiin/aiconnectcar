@@ -51,6 +51,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'email': _emailController.text,
         'location': {'lat': 0, 'long': 0},
         'trigger': '',
+        'userRequest' : {'requestText': '', 'requestState': '', 'standbyState': ''},
         'problem': {'rxState': '', 'txState': '', 'myState': '', 'nmState': '', 'txText': '', 'rxText': '', 'myText': '', 'nmText': ''},
         'Service': {
           'gasStation': {'name': '', 'location': {'lat': 0, 'long': 0}},
@@ -62,6 +63,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } else {
       return {
         'email': _emailController.text,
+        'userRequest' : {'requestText': '', 'requestState': '', 'standbyState': ''},
         'location': {'lat': 0, 'long': 0},
         'trigger': '',
         'problem': {'egState': '', 'egText': ''},
