@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SignUpScreen extends StatefulWidget {
   @override
@@ -28,6 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (user != null) {
         await _saveUserData(user);
+        await _saveLoginState(_emailController.text, _passwordController.text);
         _showSuccessDialog(context);
       }
     } on FirebaseAuthException catch (e) {
@@ -43,6 +45,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     Map<String, dynamic> userData = _buildUserData(carType);
 
     await _database.child(carType).child(vehicleNumber).set(userData);
+  }
+
+  Future<void> _saveLoginState(String email, String password) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('email', email);
+    await prefs.setString('password', password);
   }
 
   Map<String, dynamic> _buildUserData(String carType) {

@@ -1,7 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:get/get.dart';
 import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'features/authentication/login_screen.dart';
 import 'features/authentication/sign_up_screen.dart';
 import 'features/home/home_screen.dart';
@@ -18,13 +20,35 @@ void main() async {
   );
   KakaoSdk.init(nativeAppKey: '485169cb19d2eda65a5d36105f83a53b');
   Get.put(ThemeController()); // ThemeController 초기화
-  runApp(MyApp(ttsManager: TtsManager()));
+
+  // Check for saved login state and navigate accordingly
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  String? email = prefs.getString('email');
+  String? password = prefs.getString('password');
+  Widget initialScreen;
+
+  if (email != null && password != null) {
+    // Try to log in with saved credentials
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
+      initialScreen = HomeScreen();
+    } catch (e) {
+      // If login fails, show login screen
+      initialScreen = LoginScreen();
+    }
+  } else {
+    // If no saved credentials, show login screen
+    initialScreen = LoginScreen();
+  }
+
+  runApp(MyApp(ttsManager: TtsManager(), initialScreen: initialScreen));
 }
 
 class MyApp extends StatelessWidget {
   final TtsManager ttsManager;
+  final Widget initialScreen;
 
-  MyApp({required this.ttsManager});
+  MyApp({required this.ttsManager, required this.initialScreen});
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +66,7 @@ class MyApp extends StatelessWidget {
             textTheme: ButtonTextTheme.primary,
           ),
         ),
-        initialRoute: '/splash',
+        home: initialScreen,
         routes: {
           '/splash': (context) => SplashScreen(),
           '/login': (context) => LoginScreen(),

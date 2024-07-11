@@ -31,17 +31,9 @@ class SpeechRecognitionManager {
 
   void _startListening() {
     print('Starting to listen...');
-    userRequestRef.child('standbyState').once().then((snapshot) {
-      String standbyState = (snapshot.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
-      print('Standby state: $standbyState');
-      final ThemeController themeController = Get.find();
-      if (standbyState == '1') {
-        themeController.changeTheme(Colors.blueAccent);
-        print('Theme changed to blueAccent');
-      } else {
-        themeController.changeTheme(Colors.red);
-        print('Theme changed to red');
-      }
+    userRequestRef.child('requestState').once().then((snapshot) {
+      // String requestState = (snapshot.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
+      // print('Request state: $requestState');
 
       _speech.listen(
         onResult: _onSpeechResult,
@@ -86,6 +78,7 @@ class SpeechRecognitionManager {
   }
 
   Future<void> _uploadText(String text) async {
+    final ThemeController themeController = Get.find();
     print('Uploading text: $text');
     await userRequestRef.update({'requestText': text}).then((_) {
       print('Text uploaded successfully');
@@ -93,6 +86,7 @@ class SpeechRecognitionManager {
         String requestState = (snapshot.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
         print('Request state: $requestState');
         if (requestState == '1') {
+          themeController.changeTheme(Colors.greenAccent);
           _uploadState = false; // 업로드 상태 초기화
           userRequestRef.update({
             'standbyState': '0',
@@ -105,6 +99,7 @@ class SpeechRecognitionManager {
             _startListening(); // 오류 발생 시에도 다시 리스닝 시작
           });
         } else {
+          themeController.changeTheme(Colors.white);
           // requestState가 1이 아닌 경우에도 다시 리스닝을 시작하도록 추가
           _uploadState = false;
           _startListening();

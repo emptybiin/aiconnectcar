@@ -26,6 +26,7 @@ dependencies:
   flutter_compass: ^0.8.0
   speech_to_text: ^6.6.0
   get: ^4.6.6
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:

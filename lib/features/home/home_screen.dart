@@ -320,9 +320,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _logout(BuildContext context) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('email');
+    await prefs.remove('password');
     await _auth.signOut();
     Navigator.pushReplacementNamed(context, '/login');
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -332,7 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onWillPop: () async => false,
       child: Scaffold(
         appBar: AppBar(
-          backgroundColor: themeController.primaryColor.value, // 앱바 색상 설정
+          // backgroundColor: themeController.primaryColor.value, // 앱바 색상 설정
           title: Row(
             children: [
               Image.asset(
