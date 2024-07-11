@@ -15,6 +15,11 @@ class SpeechRecognitionManager with WidgetsBindingObserver {
   bool _uploadState = false; // 앱 내 변수
   Timer? _restartTimer; // 재시작 타이머
   StreamSubscription<DatabaseEvent>? _requestStateSubscription; // requestState 구독
+  String _currentRequestState = '0'; // 현재 requestState 값을 저장할 변수
+  bool _showEarIcon = false; // 귀 모양 아이콘 상태 변수
+
+  // Getter for _showEarIcon
+  bool get showEarIcon => _showEarIcon; // showEarIcon getter 추가
 
   // Constructor
   SpeechRecognitionManager(this.userRequestRef) {
@@ -32,6 +37,7 @@ class SpeechRecognitionManager with WidgetsBindingObserver {
     if (available) {
       _startListening(); // 초기화 후 듣기 시작
     } else {
+      print('Speech recognition not available.');
     }
   }
 
@@ -57,7 +63,6 @@ class SpeechRecognitionManager with WidgetsBindingObserver {
     }
   }
 
-  // Handle speech status changes
   void _onSpeechStatus(String status) {
     print('Speech status: $status');
 
@@ -66,11 +71,18 @@ class SpeechRecognitionManager with WidgetsBindingObserver {
       if (!_uploadState) {
         _restartListeningWithDelay(); // 재시작
       }
+      _showEarIcon = false;
+    } else if (status == 'listening') {
+      _isListening = true;
+      if (_currentRequestState == '1') {
+        _showEarIcon = true;
+      }
     }
   }
 
   // Handle speech recognition errors
   void _onSpeechError(SpeechRecognitionError error) {
+    print('Speech recognition error: ${error.errorMsg}');
     _isListening = false;
     if (!_uploadState) {
       _restartListeningWithDelay(); // 재시작
@@ -105,10 +117,15 @@ class SpeechRecognitionManager with WidgetsBindingObserver {
     _requestStateSubscription = userRequestRef.child('requestState').onValue.listen((event) {
       String requestState = (event.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
       print('Request state: $requestState');
+      _currentRequestState = requestState;
       if (requestState == '1') {
         themeController.changeTheme(Colors.greenAccent);
+        if (_isListening) {
+          _showEarIcon = true;
+        }
       } else {
         themeController.changeTheme(Colors.white);
+        _showEarIcon = false;
       }
     });
   }
@@ -135,6 +152,7 @@ class SpeechRecognitionManager with WidgetsBindingObserver {
   }
 
   // Dispose resources
+  @override
   void dispose() {
     _restartTimer?.cancel();
     _requestStateSubscription?.cancel();

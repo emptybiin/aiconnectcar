@@ -45,7 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userType;
   double _currentBearing = 0.0;
   StreamSubscription? _compassSubscription;
-  late SpeechRecognitionManager _speechRecognitionManager;
+  SpeechRecognitionManager? _speechRecognitionManager;
   String _currentRequestState = '0'; // 현재 requestState 값을 저장할 변수
   bool _showEarIcon = false; // 귀 모양 아이콘 상태 변수
 
@@ -67,7 +67,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _ttsManager.setStartHandler(_onTtsStart);
       _ttsManager.setCompletionHandler(_onTtsComplete);
       await _loadSettings();
-    } else {
+
+      // 여기에 setState 추가하여 _speechRecognitionManager 초기화 후 상태 업데이트
+      if (_userType != null && _vehicleNumber != null) {
+        await _initializeSpeechRecognition(_userType!, _vehicleNumber!);
+        setState(() {}); // 상태 업데이트
+      }
     }
   }
 
@@ -132,8 +137,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _listenForStateUpdates(_userType!, _vehicleNumber!);
       _listenForCallUpdates(_userType!, _vehicleNumber!);
       _listenForNavigationUpdates(_userType!, _vehicleNumber!);
-      await _initializeSpeechRecognition(_userType!, _vehicleNumber!);
-    } else {
+      if (_userType != null && _vehicleNumber != null) {
+        await _initializeSpeechRecognition(_userType!, _vehicleNumber!);
+        setState(() {}); // 상태 업데이트
+      }
     }
   }
 
@@ -145,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .child(vehicleNumber)
         .child('userRequest');
     _speechRecognitionManager = SpeechRecognitionManager(userRequestRef);
-    await _speechRecognitionManager.initialize(context);
+    await _speechRecognitionManager!.initialize(context);
   }
 
   void _listenForStateUpdates(String userType, String vehicleNumber) {
@@ -158,7 +165,8 @@ class _HomeScreenState extends State<HomeScreen> {
         .child('standbyState')
         .onValue
         .listen((event) {
-      String standbyState = (event.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
+      String standbyState =
+      (event.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
       if (standbyState == '1') {
         _updateTtsText(null); // standbyState가 1일 때 '듣고 있습니다'로 표시합니다.
       }
@@ -209,8 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _displayStateImage(values['rxState']);
         _displayStateImage(values['txState']);
         _displayStateImage(values['myState']);
-      } else {
-      }
+      } else {}
     });
   }
 
@@ -249,7 +256,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-
   void _listenForCallUpdates(String userType, String vehicleNumber) {
     _databaseManager
         .getDatabaseRef()
@@ -261,17 +267,15 @@ class _HomeScreenState extends State<HomeScreen> {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
         Map<dynamic, dynamic> values =
-            dataSnapshot.value as Map<dynamic, dynamic>;
+        dataSnapshot.value as Map<dynamic, dynamic>;
         if (values['112'] == 1) _callManager.makePhoneCall('112');
         if (values['119'] == 1) _callManager.makePhoneCall('119');
         if (values['0800482000'] == 1) _callManager.makePhoneCall('0800482000');
-      } else {
-      }
+      } else {}
     });
   }
 
   void _listenForNavigationUpdates(String userType, String vehicleNumber) {
-
     _databaseManager
         .getDatabaseRef()
         .child(userType)
@@ -282,12 +286,11 @@ class _HomeScreenState extends State<HomeScreen> {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
         Map<dynamic, dynamic> values =
-            dataSnapshot.value as Map<dynamic, dynamic>;
+        dataSnapshot.value as Map<dynamic, dynamic>;
         await _handleServiceUpdate(values, 'chargeStation');
         await _handleServiceUpdate(values, 'gasStation');
         await _handleServiceUpdate(values, 'restArea');
-      } else {
-      }
+      } else {}
     });
   }
 
@@ -305,8 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
         } catch (e) {
           print('Error launching navigation: $e');
         }
-      } else {
-      }
+      } else {}
     }
   }
 
@@ -353,7 +355,6 @@ class _HomeScreenState extends State<HomeScreen> {
       onWillPop: () async => false,
       child: Scaffold(
         appBar: AppBar(
-          // backgroundColor: themeController.primaryColor.value, // 앱바 색상 설정
           title: Row(
             children: [
               Image.asset(
@@ -451,6 +452,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
+                    SizedBox(width: 10),
+                    if (_speechRecognitionManager != null &&
+                        _speechRecognitionManager!.showEarIcon) // 초기화 여부를 확인하여 표시
+                      Icon(Icons.blur_on, size: 30, color: Colors.grey),
                   ],
                 ),
               ),
