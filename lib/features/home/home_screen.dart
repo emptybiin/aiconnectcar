@@ -27,7 +27,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final DatabaseManager _databaseManager = DatabaseManager('https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/');
+  final DatabaseManager _databaseManager = DatabaseManager(
+      'https://ai-connectcar-default-rtdb.asia-southeast1.firebasedatabase.app/');
   final TtsManager _ttsManager = TtsManager();
   final CallManager _callManager = CallManager();
   final NavigationManager _navigationManager = NavigationManager();
@@ -45,6 +46,8 @@ class _HomeScreenState extends State<HomeScreen> {
   double _currentBearing = 0.0;
   StreamSubscription? _compassSubscription;
   late SpeechRecognitionManager _speechRecognitionManager;
+  String _currentRequestState = '0'; // 현재 requestState 값을 저장할 변수
+  bool _showEarIcon = false; // 귀 모양 아이콘 상태 변수
 
   @override
   void initState() {
@@ -65,7 +68,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _ttsManager.setCompletionHandler(_onTtsComplete);
       await _loadSettings();
     } else {
-      print("User is not logged in");
     }
   }
 
@@ -79,7 +81,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _locationTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
       if (_userType != null && _vehicleNumber != null) {
         await _locationService.updateLocation(_userType!, _vehicleNumber!);
-        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        Position position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high);
         if (mounted) {
           setState(() {
             _currentPosition = LatLng(position.latitude, position.longitude);
@@ -123,60 +126,78 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _getVehicleNumberAndListenForUpdates() async {
-    print("Getting vehicle number...");
     _vehicleNumber = await _databaseManager.getVehicleNumber();
     if (_vehicleNumber != null) {
       _userType = await _databaseManager.getUserType(_vehicleNumber!);
-      print("Listening for updates...");
       _listenForStateUpdates(_userType!, _vehicleNumber!);
       _listenForCallUpdates(_userType!, _vehicleNumber!);
       _listenForNavigationUpdates(_userType!, _vehicleNumber!);
       await _initializeSpeechRecognition(_userType!, _vehicleNumber!);
     } else {
-      print("User type: not found in database");
     }
   }
 
-  Future<void> _initializeSpeechRecognition(String userType, String vehicleNumber) async {
-    DatabaseReference userRequestRef = _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('userRequest');
+  Future<void> _initializeSpeechRecognition(
+      String userType, String vehicleNumber) async {
+    DatabaseReference userRequestRef = _databaseManager
+        .getDatabaseRef()
+        .child(userType)
+        .child(vehicleNumber)
+        .child('userRequest');
     _speechRecognitionManager = SpeechRecognitionManager(userRequestRef);
     await _speechRecognitionManager.initialize(context);
   }
 
   void _listenForStateUpdates(String userType, String vehicleNumber) {
-    print("Listening for state updates...");
-
-    _databaseManager.listenForTextUpdates(vehicleNumber, userType, _isVoiceGuideEnabled, (text) {
+    // userRequest의 standbyState가 1인지 확인하는 부분 추가
+    _databaseManager
+        .getDatabaseRef()
+        .child(userType)
+        .child(vehicleNumber)
+        .child('userRequest')
+        .child('standbyState')
+        .onValue
+        .listen((event) {
+      String standbyState = (event.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
+      if (standbyState == '1') {
+        _updateTtsText(null); // standbyState가 1일 때 '듣고 있습니다'로 표시합니다.
+      }
     });
 
-    _databaseManager.getDatabaseRef()
+    _databaseManager
+        .getDatabaseRef()
         .child(userType)
         .child(vehicleNumber)
         .child('problem')
         .onValue
         .listen((event) {
       DataSnapshot dataSnapshot = event.snapshot;
-      print("DataSnapshot: ${dataSnapshot.value}");
       if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
+        Map<dynamic, dynamic> values =
+        dataSnapshot.value as Map<dynamic, dynamic>;
 
         String combinedText = '';
         if (_isVoiceGuideEnabled) {
           if (userType == 'general') {
-            if (values['myText'] != null && values['myText'].toString().trim().isNotEmpty) {
+            if (values['myText'] != null &&
+                values['myText'].toString().trim().isNotEmpty) {
               combinedText += '${values['myText']} ';
             }
-            if (values['rxText'] != null && values['rxText'].toString().trim().isNotEmpty) {
+            if (values['rxText'] != null &&
+                values['rxText'].toString().trim().isNotEmpty) {
               combinedText += '${values['rxText']} ';
             }
-            if (values['txText'] != null && values['txText'].toString().trim().isNotEmpty) {
+            if (values['txText'] != null &&
+                values['txText'].toString().trim().isNotEmpty) {
               combinedText += '${values['txText']} ';
             }
-            if (values['nmText'] != null && values['nmText'].toString().trim().isNotEmpty) {
+            if (values['nmText'] != null &&
+                values['nmText'].toString().trim().isNotEmpty) {
               combinedText += '${values['nmText']} ';
             }
           } else if (userType == 'emergency') {
-            if (values['egText'] != null && values['egText'].toString().trim().isNotEmpty) {
+            if (values['egText'] != null &&
+                values['egText'].toString().trim().isNotEmpty) {
               combinedText += '${values['egText']} ';
             }
           }
@@ -189,24 +210,23 @@ class _HomeScreenState extends State<HomeScreen> {
         _displayStateImage(values['txState']);
         _displayStateImage(values['myState']);
       } else {
-        print("No data in snapshot");
       }
     });
+  }
+
+  void _displayStateImage(String? state) {
+    if (state != null && stateToImage.containsKey(state)) {
+      _showImageForDuration(stateToImage[state]);
+    }
   }
 
   void _updateTtsText(String? text) {
     if (text != null && text.trim().isNotEmpty) {
       setState(() {
         _ttsText = text;
-        _displayedImage = stateToImage[_ttsText];
       });
-      _ttsManager.speak(text).then((_) {
-        if (mounted) {
-          setState(() {
-            _displayedImage = null;
-          });
-        }
-      });
+      _showImageForDuration(stateToImage[_ttsText]);
+      _ttsManager.speak(text); // TTS로 텍스트 읽기
     } else {
       setState(() {
         _ttsText = '듣고 있습니다';
@@ -214,10 +234,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _listenForCallUpdates(String userType, String vehicleNumber) {
-    print("Listening for call updates...");
+  void _showImageForDuration(String? image) {
+    setState(() {
+      _displayedImage = image;
+    });
 
-    _databaseManager.getDatabaseRef()
+    // 5초 후에 이미지를 숨김
+    Future.delayed(Duration(seconds: 7), () {
+      if (mounted) {
+        setState(() {
+          _displayedImage = null;
+        });
+      }
+    });
+  }
+
+
+  void _listenForCallUpdates(String userType, String vehicleNumber) {
+    _databaseManager
+        .getDatabaseRef()
         .child(userType)
         .child(vehicleNumber)
         .child('report')
@@ -225,20 +260,20 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen((event) {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
+        Map<dynamic, dynamic> values =
+            dataSnapshot.value as Map<dynamic, dynamic>;
         if (values['112'] == 1) _callManager.makePhoneCall('112');
         if (values['119'] == 1) _callManager.makePhoneCall('119');
         if (values['0800482000'] == 1) _callManager.makePhoneCall('0800482000');
       } else {
-        print("No data in snapshot");
       }
     });
   }
 
   void _listenForNavigationUpdates(String userType, String vehicleNumber) {
-    print("Listening for navigation updates...");
 
-    _databaseManager.getDatabaseRef()
+    _databaseManager
+        .getDatabaseRef()
         .child(userType)
         .child(vehicleNumber)
         .child('Service')
@@ -246,17 +281,18 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen((event) async {
       DataSnapshot dataSnapshot = event.snapshot;
       if (dataSnapshot.value != null) {
-        Map<dynamic, dynamic> values = dataSnapshot.value as Map<dynamic, dynamic>;
+        Map<dynamic, dynamic> values =
+            dataSnapshot.value as Map<dynamic, dynamic>;
         await _handleServiceUpdate(values, 'chargeStation');
         await _handleServiceUpdate(values, 'gasStation');
         await _handleServiceUpdate(values, 'restArea');
       } else {
-        print("No data in snapshot");
       }
     });
   }
 
-  Future<void> _handleServiceUpdate(Map<dynamic, dynamic> values, String serviceType) async {
+  Future<void> _handleServiceUpdate(
+      Map<dynamic, dynamic> values, String serviceType) async {
     var service = values[serviceType];
     if (service != null && service['location'] != null) {
       double lat = _convertToDouble(service['location']['lat']);
@@ -270,7 +306,6 @@ class _HomeScreenState extends State<HomeScreen> {
           print('Error launching navigation: $e');
         }
       } else {
-        print('Invalid $serviceType coordinates.');
       }
     }
   }
@@ -288,23 +323,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _isVoiceGuideEnabled = prefs.getBool('isVoiceGuideEnabled') ?? true;
     });
     _ttsManager.enableVoiceGuide(_isVoiceGuideEnabled);
-  }
-
-  void _displayStateImage(String? state) {
-    if (state != null && stateToImage.containsKey(state)) {
-      setState(() {
-        _displayedImage = stateToImage[state];
-      });
-
-      // 5초 후에 이미지를 숨김
-      Future.delayed(Duration(seconds: 5), () {
-        if (mounted) {
-          setState(() {
-            _displayedImage = null;
-          });
-        }
-      });
-    }
   }
 
   void _onTtsStart() {
@@ -326,7 +344,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await _auth.signOut();
     Navigator.pushReplacementNamed(context, '/login');
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -393,8 +410,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.all(15.0),
                           child: Image.asset(
                             _displayedImage!,
-                            width: 100,
-                            height: 100,
+                            width: 130,
+                            height: 130,
                           ),
                         ),
                       ),
@@ -409,9 +426,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(width: 10),
                     Expanded(
                       child: Container(
-                        padding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 20.0),
+                        padding: EdgeInsets.symmetric(
+                            vertical: 10.0, horizontal: 20.0),
                         decoration: BoxDecoration(
-                          color: themeController.primaryColor.value, // 하단 컨테이너 색상 설정
+                          color: themeController.primaryColor.value,
+                          // 하단 컨테이너 색상 설정
                           borderRadius: BorderRadius.circular(15.0),
                           boxShadow: [
                             BoxShadow(

@@ -34,11 +34,11 @@ void main() async {
       initialScreen = HomeScreen();
     } catch (e) {
       // If login fails, show login screen
-      initialScreen = LoginScreen();
+      initialScreen = SplashScreen();
     }
   } else {
     // If no saved credentials, show login screen
-    initialScreen = LoginScreen();
+    initialScreen = SplashScreen();
   }
 
   runApp(MyApp(ttsManager: TtsManager(), initialScreen: initialScreen));

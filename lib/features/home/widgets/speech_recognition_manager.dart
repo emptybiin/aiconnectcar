@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -6,48 +7,46 @@ import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:get/get.dart';
 import '../../../theme_controller.dart';
 
-class SpeechRecognitionManager {
+class SpeechRecognitionManager with WidgetsBindingObserver {
   final DatabaseReference userRequestRef;
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
   String _currentSentence = '';
   bool _uploadState = false; // 앱 내 변수
+  Timer? _restartTimer; // 재시작 타이머
+  StreamSubscription<DatabaseEvent>? _requestStateSubscription; // requestState 구독
 
-  SpeechRecognitionManager(this.userRequestRef);
+  // Constructor
+  SpeechRecognitionManager(this.userRequestRef) {
+    WidgetsBinding.instance.addObserver(this);
+    _listenToRequestState();
+  }
 
+  // Initialize the speech recognition manager
   Future<void> initialize(BuildContext context) async {
-    print('Initializing SpeechRecognitionManager...');
     bool available = await _speech.initialize(
       onStatus: _onSpeechStatus,
       onError: _onSpeechError,
     );
+
     if (available) {
-      print('Speech recognition available.');
       _startListening(); // 초기화 후 듣기 시작
     } else {
-      print('Speech recognition not available.');
     }
   }
 
+  // Start listening to speech
   void _startListening() {
-    print('Starting to listen...');
-    userRequestRef.child('requestState').once().then((snapshot) {
-      // String requestState = (snapshot.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
-      // print('Request state: $requestState');
-
-      _speech.listen(
-        onResult: _onSpeechResult,
-        listenFor: Duration(seconds: 20),
-        pauseFor: Duration(seconds: 5),
-        localeId: 'ko_KR',
-      );
-      _isListening = true;
-      print('Listening...');
-    }).catchError((error) {
-      print('Error getting standbyState: $error');
-    });
+    _speech.listen(
+      onResult: _onSpeechResult,
+      listenFor: Duration(seconds: 20),
+      pauseFor: Duration(seconds: 5),
+      localeId: 'ko_KR',
+    );
+    _isListening = true;
   }
 
+  // Handle speech recognition result
   void _onSpeechResult(SpeechRecognitionResult result) {
     if (result.finalResult) {
       String recognizedText = result.recognizedWords;
@@ -58,70 +57,88 @@ class SpeechRecognitionManager {
     }
   }
 
+  // Handle speech status changes
   void _onSpeechStatus(String status) {
     print('Speech status: $status');
 
     if (status == 'done') {
       _isListening = false;
       if (!_uploadState) {
-        _startListening(); // 재시작
+        _restartListeningWithDelay(); // 재시작
       }
     }
   }
 
+  // Handle speech recognition errors
   void _onSpeechError(SpeechRecognitionError error) {
-    print('Speech recognition error: ${error.errorMsg}');
     _isListening = false;
     if (!_uploadState) {
-      _startListening(); // 재시작
+      _restartListeningWithDelay(); // 재시작
     }
   }
 
+  // Upload recognized text to Firebase
   Future<void> _uploadText(String text) async {
-    final ThemeController themeController = Get.find();
-    print('Uploading text: $text');
-    await userRequestRef.update({'requestText': text}).then((_) {
+    try {
+      await userRequestRef.update({'requestText': text});
       print('Text uploaded successfully');
-      userRequestRef.child('requestState').once().then((snapshot) {
-        String requestState = (snapshot.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
-        print('Request state: $requestState');
-        if (requestState == '1') {
-          themeController.changeTheme(Colors.greenAccent);
-          _uploadState = false; // 업로드 상태 초기화
-          userRequestRef.update({
-            'standbyState': '0',
-            'requestState': '0',
-          }).then((_) {
-            print('Upload state and standby state reset.');
-            _startListening(); // 업로드 후 다시 듣기 시작
-          }).catchError((error) {
-            print('Error resetting states: $error');
-            _startListening(); // 오류 발생 시에도 다시 리스닝 시작
-          });
-        } else {
-          themeController.changeTheme(Colors.white);
-          // requestState가 1이 아닌 경우에도 다시 리스닝을 시작하도록 추가
-          _uploadState = false;
-          _startListening();
-        }
-      }).catchError((error) {
-        print('Error getting requestState: $error');
-        _uploadState = false;
-        _startListening(); // 오류 발생 시에도 다시 리스닝 시작
-      });
-    }).catchError((error) {
+    } catch (error) {
       print('Error uploading text: $error');
-      _uploadState = false;
-      _startListening(); // 오류 발생 시에도 다시 리스닝 시작
+    }
+
+    // 업로드 후 _uploadState를 false로 설정하고 다시 듣기 시작
+    _uploadState = false;
+    _restartListeningWithDelay();
+  }
+
+  // Restart listening with a delay
+  void _restartListeningWithDelay() {
+    _restartTimer?.cancel();
+    _restartTimer = Timer(Duration(seconds: 2), () {
+      _startListening();
     });
   }
 
+  // Listen to requestState changes
+  void _listenToRequestState() {
+    final ThemeController themeController = Get.find();
+    _requestStateSubscription = userRequestRef.child('requestState').onValue.listen((event) {
+      String requestState = (event.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
+      print('Request state: $requestState');
+      if (requestState == '1') {
+        themeController.changeTheme(Colors.greenAccent);
+      } else {
+        themeController.changeTheme(Colors.white);
+      }
+    });
+  }
+
+  // Set upload state
   void setUploadState(bool state) {
-    print('Setting uploadState to: $state');
     _uploadState = state;
-    print('_uploadState is now: $_uploadState');
     if (_uploadState) {
       _uploadText(_currentSentence.trim()); // 업로드 상태가 true인 경우 텍스트 업로드
     }
+  }
+
+  // Handle app lifecycle changes
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _speech.stop();
+      _restartTimer?.cancel();
+      _requestStateSubscription?.cancel();
+    } else if (state == AppLifecycleState.resumed) {
+      _restartListeningWithDelay();
+      _listenToRequestState();
+    }
+  }
+
+  // Dispose resources
+  void dispose() {
+    _restartTimer?.cancel();
+    _requestStateSubscription?.cancel();
+    _speech.stop();
+    WidgetsBinding.instance.removeObserver(this);
   }
 }
