@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -8,7 +7,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_compass/flutter_compass.dart';
+import 'package:get/get.dart';
 
+import '../../theme_controller.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/call_manager.dart';
 import 'widgets/database_manager.dart';
@@ -49,6 +50,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _initialize();
+    _requestPermissions();
+    _listenToCompass();
   }
 
   Future<void> _initialize() async {
@@ -67,12 +70,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _requestPermissions() async {
-    final locationPermissionStatus = await Permission.locationWhenInUse.request();
-    if (locationPermissionStatus.isGranted) {
+    if (await Permission.locationWhenInUse.request().isGranted) {
       await Permission.activityRecognition.request();
-    } else {
-      // 권한이 거부되었을 때 처리
-      print("Location permission not granted");
     }
   }
 
@@ -141,14 +140,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeSpeechRecognition(String userType, String vehicleNumber) async {
     DatabaseReference userRequestRef = _databaseManager.getDatabaseRef().child(userType).child(vehicleNumber).child('userRequest');
     _speechRecognitionManager = SpeechRecognitionManager(userRequestRef);
-    await _speechRecognitionManager.initialize();
+    await _speechRecognitionManager.initialize(context);
   }
 
   void _listenForStateUpdates(String userType, String vehicleNumber) {
     print("Listening for state updates...");
 
     _databaseManager.listenForTextUpdates(vehicleNumber, userType, _isVoiceGuideEnabled, (text) {
-      _updateTtsText(text);
     });
 
     _databaseManager.getDatabaseRef()
@@ -297,6 +295,15 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _displayedImage = stateToImage[state];
       });
+
+      // 5초 후에 이미지를 숨김
+      Future.delayed(Duration(seconds: 5), () {
+        if (mounted) {
+          setState(() {
+            _displayedImage = null;
+          });
+        }
+      });
     }
   }
 
@@ -309,7 +316,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onTtsComplete() {
     setState(() {
       _ttsManager.isSpeaking = false;
-      _displayedImage = null;
     });
   }
 
@@ -320,10 +326,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeController themeController = Get.find();
+
     return WillPopScope(
       onWillPop: () async => false,
       child: Scaffold(
         appBar: AppBar(
+          backgroundColor: themeController.primaryColor.value, // 앱바 색상 설정
           title: Row(
             children: [
               Image.asset(
@@ -398,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Container(
                         padding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 20.0),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: themeController.primaryColor.value, // 하단 컨테이너 색상 설정
                           borderRadius: BorderRadius.circular(15.0),
                           boxShadow: [
                             BoxShadow(

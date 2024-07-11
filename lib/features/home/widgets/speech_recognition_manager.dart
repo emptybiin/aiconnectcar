@@ -1,78 +1,132 @@
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:get/get.dart';
+import '../../../theme_controller.dart';
 
-// 음성 인식 관리자 클래스
 class SpeechRecognitionManager {
-  final DatabaseReference userRequestRef; // Firebase 데이터베이스 참조 변수
-  final stt.SpeechToText _speech = stt.SpeechToText(); // SpeechToText 인스턴스 생성
-  bool _isListening = false; // 현재 듣고 있는지 여부를 나타내는 변수
-  String _currentSentence = ''; // 현재 인식된 문장을 저장하는 변수
+  final DatabaseReference userRequestRef;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  String _currentSentence = '';
+  bool _uploadState = false; // 앱 내 변수
 
-  // 생성자 - Firebase 데이터베이스 참조를 받음
   SpeechRecognitionManager(this.userRequestRef);
 
-  // 음성 인식 초기화 함수
-  Future<void> initialize() async {
-    // 음성 인식 초기화 및 상태와 오류 핸들러 등록
+  Future<void> initialize(BuildContext context) async {
+    print('Initializing SpeechRecognitionManager...');
     bool available = await _speech.initialize(
-      onStatus: _onSpeechStatus, // 음성 인식 상태 콜백 함수
-      onError: _onSpeechError,   // 음성 인식 오류 콜백 함수
+      onStatus: _onSpeechStatus,
+      onError: _onSpeechError,
     );
-    // 음성 인식이 가능한 경우 듣기 시작
     if (available) {
-      _startListening();
+      print('Speech recognition available.');
+      _startListening(); // 초기화 후 듣기 시작
     } else {
-      print('음성 인식 사용 불가');
+      print('Speech recognition not available.');
     }
   }
 
-  // 음성 듣기 시작 함수
   void _startListening() {
-    _speech.listen(
-      listenFor: Duration(seconds: 20), // 20초 동안 듣기
-      pauseFor: Duration(seconds: 3),   // 3초 동안 멈춤
-      onResult: _onSpeechResult, // 결과를 처리할 콜백 함수 등록
-      localeId: 'ko_KR',                // 한국어 설정
-    );
-    _isListening = true; // 듣기 상태 설정
+    print('Starting to listen...');
+    userRequestRef.child('standbyState').once().then((snapshot) {
+      String standbyState = (snapshot.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
+      print('Standby state: $standbyState');
+      final ThemeController themeController = Get.find();
+      if (standbyState == '1') {
+        themeController.changeTheme(Colors.blueAccent);
+        print('Theme changed to blueAccent');
+      } else {
+        themeController.changeTheme(Colors.red);
+        print('Theme changed to red');
+      }
+
+      _speech.listen(
+        onResult: _onSpeechResult,
+        listenFor: Duration(seconds: 20),
+        pauseFor: Duration(seconds: 5),
+        localeId: 'ko_KR',
+      );
+      _isListening = true;
+      print('Listening...');
+    }).catchError((error) {
+      print('Error getting standbyState: $error');
+    });
   }
 
-  // 음성 인식 결과를 처리하는 함수
   void _onSpeechResult(SpeechRecognitionResult result) {
-    // 최종 결과가 나왔을 때만 처리
     if (result.finalResult) {
-      String recognizedText = result.recognizedWords; // 인식된 텍스트 가져오기
-      print('인식된 텍스트: $recognizedText');
-      _currentSentence = recognizedText; // 인식된 텍스트를 현재 문장에 저장
-      _uploadText(_currentSentence.trim()); // 텍스트를 Firebase에 업로드
-      _currentSentence = ''; // 현재 문장 초기화
+      String recognizedText = result.recognizedWords;
+      print('Recognized text: $recognizedText');
+      _currentSentence = recognizedText;
+      _uploadState = true;
+      _uploadText(_currentSentence.trim());
     }
   }
 
-  // 음성 인식 상태를 처리하는 함수
   void _onSpeechStatus(String status) {
-    print('음성 상태: $status');
-    // 듣기 상태가 'done'인 경우 다시 듣기 시작
+    print('Speech status: $status');
+
     if (status == 'done') {
       _isListening = false;
-      _startListening();
+      if (!_uploadState) {
+        _startListening(); // 재시작
+      }
     }
   }
 
-  // 음성 인식 오류를 처리하는 함수
   void _onSpeechError(SpeechRecognitionError error) {
-    // print('음성 인식 오류: ${error.errorMsg}');
-    // 듣기 상태가 'false'인 경우 다시 듣기 시작
-    if (_isListening) {
-      _isListening = false;
-      _startListening();
+    print('Speech recognition error: ${error.errorMsg}');
+    _isListening = false;
+    if (!_uploadState) {
+      _startListening(); // 재시작
     }
   }
 
-  // 인식된 텍스트를 Firebase 데이터베이스에 업로드하는 함수
   Future<void> _uploadText(String text) async {
-    await userRequestRef.update({'requestText': text});
+    print('Uploading text: $text');
+    await userRequestRef.update({'requestText': text}).then((_) {
+      print('Text uploaded successfully');
+      userRequestRef.child('requestState').once().then((snapshot) {
+        String requestState = (snapshot.snapshot.value ?? '0') as String; // null인 경우 기본값 '0' 사용
+        print('Request state: $requestState');
+        if (requestState == '1') {
+          _uploadState = false; // 업로드 상태 초기화
+          userRequestRef.update({
+            'standbyState': '0',
+            'requestState': '0',
+          }).then((_) {
+            print('Upload state and standby state reset.');
+            _startListening(); // 업로드 후 다시 듣기 시작
+          }).catchError((error) {
+            print('Error resetting states: $error');
+            _startListening(); // 오류 발생 시에도 다시 리스닝 시작
+          });
+        } else {
+          // requestState가 1이 아닌 경우에도 다시 리스닝을 시작하도록 추가
+          _uploadState = false;
+          _startListening();
+        }
+      }).catchError((error) {
+        print('Error getting requestState: $error');
+        _uploadState = false;
+        _startListening(); // 오류 발생 시에도 다시 리스닝 시작
+      });
+    }).catchError((error) {
+      print('Error uploading text: $error');
+      _uploadState = false;
+      _startListening(); // 오류 발생 시에도 다시 리스닝 시작
+    });
+  }
+
+  void setUploadState(bool state) {
+    print('Setting uploadState to: $state');
+    _uploadState = state;
+    print('_uploadState is now: $_uploadState');
+    if (_uploadState) {
+      _uploadText(_currentSentence.trim()); // 업로드 상태가 true인 경우 텍스트 업로드
+    }
   }
 }
