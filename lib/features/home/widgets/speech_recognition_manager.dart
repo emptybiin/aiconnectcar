@@ -93,9 +93,9 @@ class SpeechRecognitionManager with WidgetsBindingObserver {
   Future<void> _uploadText(String text) async {
     try {
       await userRequestRef.update({'requestText': text});
-      print('Text uploaded successfully');
+      print('Text uploaded successfully to ${userRequestRef.path}');
     } catch (error) {
-      print('Error uploading text: $error');
+      print('Error uploading text to ${userRequestRef.path}: $error');
     }
 
     // 업로드 후 _uploadState를 false로 설정하고 다시 듣기 시작

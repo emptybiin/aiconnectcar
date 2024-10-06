@@ -45,9 +45,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userType;
   double _currentBearing = 0.0;
   StreamSubscription? _compassSubscription;
+  StreamSubscription? _batterySubscription; // 배터리 리스너 추가
   SpeechRecognitionManager? _speechRecognitionManager;
   String _currentRequestState = '0'; // 현재 requestState 값을 저장할 변수
   bool _showEarIcon = false; // 귀 모양 아이콘 상태 변수
+  int _batteryLevel = 100; // 배터리 잔량 변수 추가
 
   @override
   void initState() {
@@ -68,12 +70,53 @@ class _HomeScreenState extends State<HomeScreen> {
       _ttsManager.setCompletionHandler(_onTtsComplete);
       await _loadSettings();
 
+      // 배터리 리스너 초기화
+      if (_userType != null && _vehicleNumber != null) {
+        _listenToBattery(_userType!, _vehicleNumber!);
+      }
+
       // 여기에 setState 추가하여 _speechRecognitionManager 초기화 후 상태 업데이트
       if (_userType != null && _vehicleNumber != null) {
         await _initializeSpeechRecognition(_userType!, _vehicleNumber!);
         setState(() {}); // 상태 업데이트
       }
     }
+  }
+
+  // 배터리 레벨에 따른 색상을 반환하는 헬퍼 함수
+  Color getBatteryColor(int level) {
+    if (level >= 80 && level <= 100) {
+      return Colors.blue;
+    } else if (level >= 50 && level < 80) {
+      return Colors.green;
+    } else if (level >= 20 && level < 50) {
+      return Colors.yellow;
+    } else {
+      return Colors.red;
+    }
+  }
+
+  Future<void> _listenToBattery(String userType, String vehicleNumber) async {
+    DatabaseReference batteryRef = _databaseManager
+        .getDatabaseRef()
+        .child(userType)
+        .child(vehicleNumber)
+        .child('battery');
+
+    _batterySubscription = batteryRef.onValue.listen((event) {
+      final data = event.snapshot.value;
+      if (data != null) {
+        int battery = 100;
+        if (data is int) {
+          battery = data;
+        } else if (data is String) {
+          battery = int.tryParse(data) ?? 100;
+        }
+        setState(() {
+          _batteryLevel = battery;
+        });
+      }
+    });
   }
 
   Future<void> _requestPermissions() async {
@@ -127,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _locationTimer?.cancel();
     _compassSubscription?.cancel();
+    _batterySubscription?.cancel(); // 배터리 리스너 취소
     super.dispose();
   }
 
@@ -246,8 +290,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _displayedImage = image;
     });
 
-    // 5초 후에 이미지를 숨김
-    Future.delayed(Duration(seconds: 7), () {
+    // 15초 후에 이미지를 숨김
+    Future.delayed(Duration(seconds: 15), () {
       if (mounted) {
         setState(() {
           _displayedImage = null;
@@ -270,7 +314,8 @@ class _HomeScreenState extends State<HomeScreen> {
         dataSnapshot.value as Map<dynamic, dynamic>;
         if (values['112'] == 1) _callManager.makePhoneCall('112');
         if (values['119'] == 1) _callManager.makePhoneCall('119');
-        if (values['0800482000'] == 1) _callManager.makePhoneCall('0800482000');
+        if (values['0800482000'] == 1)
+          _callManager.makePhoneCall('0800482000');
       } else {}
     });
   }
@@ -367,6 +412,26 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           actions: [
+            // 배터리 잔량 표시 위젯 추가
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.battery_full,
+                    color: getBatteryColor(_batteryLevel),
+                  ),
+                  SizedBox(width: 5),
+                  Text(
+                    '$_batteryLevel%',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             IconButton(
               icon: Icon(Icons.logout),
               onPressed: () => _logout(context),
@@ -376,7 +441,8 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => SettingsScreen(ttsManager: _ttsManager),
+                  builder: (context) =>
+                      SettingsScreen(ttsManager: _ttsManager),
                 ),
               ),
             ),

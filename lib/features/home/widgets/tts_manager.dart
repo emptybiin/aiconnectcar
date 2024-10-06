@@ -16,6 +16,7 @@ class TtsManager {
 
     _flutterTts.setErrorHandler((msg) {
       isSpeaking = false;
+      print("TTS Error: $msg");
     });
 
     _initializeTtsSettings();
@@ -23,7 +24,12 @@ class TtsManager {
 
   Future<void> speak(String text) async {
     if (isVoiceGuideEnabled) {
-      await _flutterTts.speak(text);
+      try {
+        await _flutterTts.speak(text);
+      } catch (e) {
+        print("TTS speak error: $e");
+        isSpeaking = false;
+      }
     }
   }
 
@@ -40,8 +46,12 @@ class TtsManager {
   }
 
   void _initializeTtsSettings() async {
-    await _flutterTts.setVolume(1.0);
-    await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.setPitch(1.0);
+    try {
+      await _flutterTts.setVolume(1.0);
+      await _flutterTts.setSpeechRate(0.5);
+      await _flutterTts.setPitch(1.0);
+    } catch (e) {
+      print("TTS initialization error: $e");
+    }
   }
 }

@@ -45,9 +45,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     User? user = _auth.currentUser;
     if (user != null) {
       DatabaseEvent generalEvent = await _database.child('general').orderByChild('email').equalTo(user.email).once();
+      DatabaseEvent emergencyEvent = await _database.child('emergency').orderByChild('email').equalTo(user.email).once();
+
       if (generalEvent.snapshot.value != null) {
         Map<dynamic, dynamic> generalData = generalEvent.snapshot.value as Map<dynamic, dynamic>;
         String vehicleNumber = generalData.keys.first;
+        setState(() {
+          _vehicleController.text = vehicleNumber;
+        });
+      } else if (emergencyEvent.snapshot.value != null) {
+        Map<dynamic, dynamic> emergencyData = emergencyEvent.snapshot.value as Map<dynamic, dynamic>;
+        String vehicleNumber = emergencyData.keys.first;
         setState(() {
           _vehicleController.text = vehicleNumber;
         });

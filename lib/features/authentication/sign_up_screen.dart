@@ -22,7 +22,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _signUp() async {
     try {
       UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-        email: _emailController.text,
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
       User? user = userCredential.user;
@@ -35,7 +35,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } on FirebaseAuthException catch (e) {
       _handleError(e.message);
     } catch (e) {
-      _handleError('An unknown error occurred');
+      _handleError('알 수 없는 오류가 발생했습니다.');
     }
   }
 
@@ -47,20 +47,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
     await _database.child(carType).child(vehicleNumber).set(userData);
   }
 
-  Future<void> _saveLoginState(String email, String password) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('email', email);
-    await prefs.setString('password', password);
-  }
-
   Map<String, dynamic> _buildUserData(String carType) {
     if (carType == 'general') {
       return {
-        'email': _emailController.text,
+        'email': _emailController.text.trim(),
+        'battery': 100, // 배터리 잔량 기본값 추가
         'location': {'lat': 0, 'long': 0},
         'trigger': '',
-        'userRequest' : {'requestText': '', 'requestState': '', 'standbyState': ''},
-        'problem': {'rxState': '', 'txState': '', 'myState': '', 'nmState': '', 'txText': '', 'rxText': '', 'myText': '', 'nmText': ''},
+        'userRequest': {'requestText': '', 'requestState': '', 'standbyState': ''},
+        'problem': {
+          'rxState': '',
+          'txState': '',
+          'myState': '',
+          'nmState': '',
+          'txText': '',
+          'rxText': '',
+          'myText': '',
+          'nmText': ''
+        },
         'Service': {
           'gasStation': {'name': '', 'location': {'lat': 0, 'long': 0}},
           'chargeStation': {'name': '', 'location': {'lat': 0, 'long': 0}},
@@ -70,8 +74,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       };
     } else {
       return {
-        'email': _emailController.text,
-        'userRequest' : {'requestText': '', 'requestState': '', 'standbyState': ''},
+        'email': _emailController.text.trim(),
+        'battery': 100, // 배터리 잔량 기본값 추가
+        'userRequest': {'requestText': '', 'requestState': '', 'standbyState': ''},
         'location': {'lat': 0, 'long': 0},
         'trigger': '',
         'problem': {'egState': '', 'egText': ''},
@@ -79,9 +84,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  Future<void> _saveLoginState(String email, String password) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('email', email);
+    await prefs.setString('password', password);
+  }
+
   void _handleError(String? message) {
     setState(() {
-      _errorMessage = message ?? 'An unknown error occurred';
+      _errorMessage = message ?? '알 수 없는 오류가 발생했습니다.';
     });
   }
 
@@ -104,6 +115,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
         );
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _carNumberController.dispose();
+    super.dispose();
   }
 
   @override
@@ -136,11 +155,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  TextField _buildTextField(TextEditingController controller, String labelText, {bool obscureText = false}) {
+  TextField _buildTextField(TextEditingController controller, String labelText, {bool obscureText = false, TextInputType? keyboardType}) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(labelText: labelText),
       obscureText: obscureText,
+      keyboardType: keyboardType,
     );
   }
 
