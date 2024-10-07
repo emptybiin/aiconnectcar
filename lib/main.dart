@@ -21,28 +21,40 @@ void main() async {
   KakaoSdk.init(nativeAppKey: '485169cb19d2eda65a5d36105f83a53b');
   Get.put(ThemeController()); // ThemeController 초기화
 
-  // Check for saved login state and navigate accordingly
+  // 로그인 상태 확인 및 초기 화면 설정
   SharedPreferences prefs = await SharedPreferences.getInstance();
   String? email = prefs.getString('email');
   String? password = prefs.getString('password');
   Widget initialScreen;
 
+  // 저장된 이메일과 비밀번호를 로그로 출력
+  print("저장된 이메일: $email");
+  print("저장된 비밀번호: $password");
+
   if (email != null && password != null) {
-    // Try to log in with saved credentials
+    // 저장된 자격 증명으로 로그인 시도
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
-      initialScreen = HomeScreen();
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
+      User? user = userCredential.user;
+      if (user != null) {
+        print("로그인 성공: ${user.email}");
+        initialScreen = HomeScreen();
+      } else {
+        print("로그인 실패: 사용자 정보 없음");
+        initialScreen = SplashScreen();
+      }
     } catch (e) {
-      // If login fails, show login screen
+      print("로그인 오류: $e");
       initialScreen = SplashScreen();
     }
   } else {
-    // If no saved credentials, show login screen
+    // 저장된 자격 증명이 없을 경우 SplashScreen으로 이동
     initialScreen = SplashScreen();
   }
 
   runApp(MyApp(ttsManager: TtsManager(), initialScreen: initialScreen));
 }
+
 
 class MyApp extends StatelessWidget {
   final TtsManager ttsManager;

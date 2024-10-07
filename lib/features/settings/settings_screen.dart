@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../home/widgets/tts_manager.dart';
+import '../recommend/recommend_places_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final TtsManager ttsManager;
@@ -44,17 +45,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _loadVehicleInfo() async {
     User? user = _auth.currentUser;
     if (user != null) {
-      DatabaseEvent generalEvent = await _database.child('general').orderByChild('email').equalTo(user.email).once();
-      DatabaseEvent emergencyEvent = await _database.child('emergency').orderByChild('email').equalTo(user.email).once();
+      // 'general' 및 'emergency' 노드에서 이메일로 차량 번호 검색
+      DatabaseEvent generalEvent = await _database
+          .child('general')
+          .orderByChild('email')
+          .equalTo(user.email)
+          .once();
+      DatabaseEvent emergencyEvent = await _database
+          .child('emergency')
+          .orderByChild('email')
+          .equalTo(user.email)
+          .once();
 
       if (generalEvent.snapshot.value != null) {
-        Map<dynamic, dynamic> generalData = generalEvent.snapshot.value as Map<dynamic, dynamic>;
+        Map<dynamic, dynamic> generalData =
+        generalEvent.snapshot.value as Map<dynamic, dynamic>;
         String vehicleNumber = generalData.keys.first;
         setState(() {
           _vehicleController.text = vehicleNumber;
         });
       } else if (emergencyEvent.snapshot.value != null) {
-        Map<dynamic, dynamic> emergencyData = emergencyEvent.snapshot.value as Map<dynamic, dynamic>;
+        Map<dynamic, dynamic> emergencyData =
+        emergencyEvent.snapshot.value as Map<dynamic, dynamic>;
         String vehicleNumber = emergencyData.keys.first;
         setState(() {
           _vehicleController.text = vehicleNumber;
@@ -73,14 +85,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.ttsManager.enableVoiceGuide(_voiceGuide);
   }
 
+  void _navigateToRecommendPlaces() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => RecommendPlacesScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Settings')),
+      appBar: AppBar(title: Text('마이 프로필')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
+            ListTile(
+              title: TextField(
+                controller: _vehicleController,
+                style: TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Vehicle Info',
+                  labelStyle: TextStyle(color: Colors.grey),
+                ),
+                enabled: false,
+              ),
+            ),
+            ListTile(
+              title: TextField(
+                controller: _profileController,
+                decoration: InputDecoration(labelText: 'Profile Info'),
+                onChanged: (String value) {
+                  _saveSettings();
+                },
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.all(20),
+              child: ElevatedButton(
+                onPressed: _navigateToRecommendPlaces,
+                child: Text('추천받은 장소 보기'),
+              ),
+            ),
+            SizedBox(height: 20,),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Text('환경설정', style: TextStyle(color: Colors.white, fontSize: 20),),
+            ),
             SwitchListTile(
               title: Text('Voice Guide'),
               value: _voiceGuide,
@@ -113,23 +164,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
                 min: 0.0,
                 max: 1.0,
-              ),
-            ),
-            ListTile(
-              title: TextField(
-                controller: _vehicleController,
-                style: TextStyle(color: Colors.white),
-                decoration: InputDecoration(labelText: 'Vehicle Info', labelStyle: TextStyle(color: Colors.grey)),
-                enabled: false,
-              ),
-            ),
-            ListTile(
-              title: TextField(
-                controller: _profileController,
-                decoration: InputDecoration(labelText: 'Profile Info'),
-                onChanged: (String value) {
-                  _saveSettings();
-                },
               ),
             ),
           ],

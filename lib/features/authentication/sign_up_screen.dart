@@ -71,6 +71,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'restArea': {'name': '', 'location': {'lat': 0, 'long': 0}},
         },
         'report': {'112': 0, '119': 0, '0800482000': 0},
+        'LBS': {},
       };
     } else {
       return {
@@ -80,6 +81,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'location': {'lat': 0, 'long': 0},
         'trigger': '',
         'problem': {'egState': '', 'egText': ''},
+        'LBS': {},
       };
     }
   }
